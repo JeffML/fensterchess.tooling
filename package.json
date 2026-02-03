@@ -1,0 +1,37 @@
+{
+  "name": "fensterchess.tooling",
+  "version": "0.1.0",
+  "description": "Data maintenance tooling for fensterchess master games database",
+  "type": "module",
+  "scripts": {
+    "download": "tsx scripts/downloadMasterGames.ts",
+    "build-indexes": "tsx scripts/buildIndexes.ts",
+    "test:filters": "node scripts/testFiltering.js",
+    "type-check": "tsc --noEmit"
+  },
+  "keywords": [
+    "chess",
+    "pgn",
+    "database",
+    "tooling"
+  ],
+  "author": "Jeff Lowery",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JeffML/fensterchess.tooling.git"
+  },
+  "dependencies": {
+    "@chess-openings/eco.json": "^1.1.0",
+    "@chess-pgn/chess-pgn": "^1.0.0",
+    "@netlify/blobs": "^8.1.0",
+    "tsx": "^4.19.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
