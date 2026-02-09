@@ -5,6 +5,7 @@
 This repository contains data maintenance tooling for fensterchess's master games database. It handles downloading, filtering, indexing, and uploading ~19,000 high-level chess games (2400+ ELO) to Netlify Blobs for consumption by the fensterchess application.
 
 **Related repositories:**
+
 - [fensterchess](https://github.com/JeffML/fensterchess) - Main application (consumes the data)
 - [chessPGN](https://github.com/JeffML/chessPGN) - Chess library used for parsing
 - [eco.json](https://github.com/JeffML/eco.json) - Opening database used for lookup
@@ -58,10 +59,10 @@ Implemented in `filterGame.ts`:
 
 ```typescript
 // pgnmentor: No title requirement
-filterGame(game, 'pgnmentor', { requireTitle: false })
+filterGame(game, "pgnmentor", { requireTitle: false });
 
 // Lichess Elite: Requires BOTH players to have FIDE titles
-filterGame(game, 'lichess', { requireTitle: true })
+filterGame(game, "lichess", { requireTitle: true });
 ```
 
 **Critical:** The `requireTitle` option enforces that both White and Black have FIDE titles in their headers.
@@ -119,22 +120,24 @@ Each game in the index has these fields for opening lookup:
 ```typescript
 interface GameMetadata {
   // ... player, result, event fields ...
-  
-  ecoJsonFen: string;      // THE KEY for opening-by-fen.json index
-  ecoJsonOpening: string;  // Opening name (e.g., "Nimzo-Larsen Attack")
-  ecoJsonEco: string;      // ECO code (e.g., "A01")
-  movesBack: number;       // Half-moves from end to this opening position
+
+  ecoJsonFen: string; // THE KEY for opening-by-fen.json index
+  ecoJsonOpening: string; // Opening name (e.g., "Nimzo-Larsen Attack")
+  ecoJsonEco: string; // ECO code (e.g., "A01")
+  movesBack: number; // Half-moves from end to this opening position
 }
 ```
 
 **Why this matters:**
 
 When a user is at a position that has NO named opening (e.g., 1.b3 d6), to find relevant games:
+
 1. Look up the nearest ANCESTOR opening (e.g., 1.b3 = "Nimzo-Larsen Attack")
 2. Use THAT opening's FEN as the key in `opening-by-fen.json`
 3. The game metadata stores this as `ecoJsonFen` - it's the INDEX KEY
 
 **Example:** A game ending at move 40 that plays 1.b3 d6 2.Bb2:
+
 - `ecoJsonFen`: FEN after 1.b3 (the Nimzo-Larsen Attack position - the INDEX KEY)
 - `ecoJsonOpening`: "Nimzo-Larsen Attack"
 - `ecoJsonEco`: "A01"
@@ -147,6 +150,7 @@ When a user is at a position that has NO named opening (e.g., 1.b3 d6), to find 
 ### Setup
 
 **Environment Variable:**
+
 ```bash
 NETLIFY_BLOB_STORE_API_KEY=<your-key>
 ```
@@ -158,6 +162,7 @@ Set in Netlify project dashboard or `.env` file locally.
 **Store name:** `master-games` (or similar - document actual name here)
 
 **Blobs:**
+
 ```
 /indexes/master-index.json
 /indexes/player-index.json
@@ -176,20 +181,23 @@ Set in Netlify project dashboard or `.env` file locally.
 ```
 
 **Upload pattern:**
-```typescript
-import { getStore } from '@netlify/blobs';
 
-const store = getStore('master-games');
-await store.set('indexes/master-index.json', JSON.stringify(masterIndex));
+```typescript
+import { getStore } from "@netlify/blobs";
+
+const store = getStore("master-games");
+await store.set("indexes/master-index.json", JSON.stringify(masterIndex));
 ```
 
 ### Migration from Bundled JSON
 
 **Current state (fensterchess):**
+
 - Indexes bundled in `data/indexes/` directory
 - Deployed with application bundle
 
 **Future state:**
+
 - Indexes stored in Netlify Blobs
 - Serverless functions query blobs
 - Smaller application bundle
@@ -251,11 +259,13 @@ tsx scripts/testFiltering.js
 ### Filter Verification
 
 Run test filtering to ensure quality filters work:
+
 ```bash
 npm run test:filters
 ```
 
 Checks:
+
 - ELO requirements enforced
 - Time controls validated
 - Title requirements (for Lichess)
@@ -264,6 +274,7 @@ Checks:
 ### Index Integrity
 
 After building indexes, verify:
+
 - All game indexes in range [0, totalGames)
 - No broken references
 - `ecoJsonFen` populated for all games
@@ -306,7 +317,165 @@ See `.github/docs/` directory for detailed design docs:
 
 **Current Phase:** Phase 1 complete (downloaded 5 masters, indexes built locally)
 **Next Phase:** Phase 2 (UI integration and query optimization)
-**Future Phase:** Phase 3 (Upload to Netlify Blobs, remove bundled JSON)
+**Current Phase:** Phase 3 complete - Data now in Netlify Blobs
+
+## Planned Refactor: Incremental Updates
+
+**Goal**: Refactor scripts to support incremental game additions without full rebuilds.
+
+### New Architecture
+
+**Site-Specific Scripts** (run independently):
+- `downloadPgnmentor.ts` - Downloads from pgnmentor.com (5 masters)
+- `downloadLichess.ts` - Downloads Lichess Elite monthly archives
+- `downloadTWIC.ts` - Downloads The Week in Chess archives (TODO)
+
+**Workflow Steps**:
+1. **Backup existing data** - Download all blobs to `backups/<date>/`
+2. **Download new games** - Site-specific script with throttling
+3. **Filter and deduplicate** - Check against existing game hashes
+4. **Build incremental indexes** - Append to existing data
+5. **Review changes** - Show diff summary ("+150 games, 3 indexes modified")
+6. **Upload to blobs** - Separate step with confirmation
+
+### Backup Strategy
+
+**Before any update:**
+```bash
+npm run backup  # Downloads all Netlify Blobs to backups/<YYYY-MM-DD>/
+```
+
+**Backup contents** (~26 MB):
+- 10 index files (opening-by-name, chunks, etc.)
+- Allows rollback if update fails
+- Timestamped for audit trail
+
+**Alternative**: Only backup indexes being modified (smaller, faster)
+
+### Incremental Game IDs
+
+**Strategy**: Continue from max existing game ID
+```typescript
+// Load existing chunks from blobs
+const maxExistingId = getMaxGameIdFromChunks(existingChunks);
+const newGameStartId = maxExistingId + 1;
+
+// Assign IDs to new games
+newGames.forEach((game, i) => {
+  game.idx = newGameStartId + i;
+});
+```
+
+**Chunking**: Add new chunks as needed (chunk-5.json, chunk-6.json, etc.)
+- Keep chunks ~4000 games each
+- Don't rebalance existing chunks (avoids breaking game ID → chunk mapping)
+
+### Source Tracking (Already Implemented)
+
+**Track downloaded files** in `source-tracking.json`:
+```json
+{
+  "pgnmentor": {
+    "Carlsen": {
+      "url": "https://pgnmentor.com/players/Carlsen.zip",
+      "etag": "abc123...",
+      "lastModified": "2024-12-15T10:30:00Z",
+      "localFile": "data/pgn-downloads/Carlsen.zip",
+      "downloadDate": "2024-12-20T14:22:00Z",
+      "gameCount": 3845
+    }
+  },
+  "lichess": { /* similar */ }
+}
+```
+
+**Update detection**:
+- Make HEAD request to check ETag/Last-Modified
+- Only download if changed
+- Update source-tracking.json after successful download
+
+### Throttling (Already Implemented)
+
+**Rate limits per site**:
+- pgnmentor.com: 1 request / 2 seconds (conservative)
+- Lichess: 2 requests / second (documented rate limit)
+- TWIC: 1 request / 2 seconds (TBD based on site)
+
+**Implementation**:
+```typescript
+async function downloadWithThrottle(urls: string[], delayMs: number) {
+  for (const url of urls) {
+    await download(url);
+    await sleep(delayMs);
+  }
+}
+```
+
+### Deduplication
+
+**Strategy**: Load existing deduplication index from blobs first
+```typescript
+// Load from backups/<date>/deduplication-index.json
+const existingHashes = await loadDeduplicationIndex();
+
+// Filter new games
+const newUniqueGames = newGames.filter(game => {
+  const hash = hashGame(game);
+  return !existingHashes[hash];
+});
+```
+
+**Goal**: Avoid duplicate games across all sources
+
+### Filter: Games in Progress
+
+**Detection**: Result field = "*" indicates game not finished
+```typescript
+function filterGame(game: ParsedGame): boolean {
+  // ... existing filters ...
+  
+  // Exclude games in progress
+  if (game.headers.Result === '*') {
+    return false;
+  }
+  
+  return true;
+}
+```
+
+**Why**: In-progress games lack final result, may change later
+
+### Upload Script with Confirmation
+
+**Show diff before upload**:
+```
+=== Upload Summary ===
+New games: +150
+Modified indexes:
+  - opening-by-name.json (+25 entries)
+  - chunk-5.json (new file, 150 games)
+  - game-to-players.json (+150 entries)
+  
+Total changes: 3 files, 150 games added
+
+Continue with upload? [y/N]
+```
+
+**Confirmation required**: Prevents accidental overwrites
+
+### Migration Tasks
+
+**TODO**:
+- [ ] Refactor downloadMasterGames.ts → 3 site-specific scripts
+- [ ] Implement backup script (download all blobs)
+- [ ] Modify buildIndexes.ts for incremental mode
+- [ ] Add diff/summary to upload script
+- [ ] Implement upload confirmation prompt
+- [ ] Add games-in-progress filter to filterGame.ts
+- [ ] Add downloadTWIC.ts for The Week in Chess
+- [ ] Document TWIC filtering strategy
+- [ ] Test incremental flow end-to-end
+- [ ] Update data pipeline diagram in README
 
 ## Common Pitfalls
 
@@ -351,12 +520,14 @@ Tag releases in git and document in `CHANGELOG.md`.
 
 ## Future Enhancements
 
-- [ ] Automate monthly Lichess Elite downloads
+- [x] Automate monthly Lichess Elite downloads (see Planned Refactor)
+- [ ] Add The Week in Chess (TWIC) as data source (see Migration Tasks)
 - [ ] Expand to more pgnmentor masters
 - [ ] Add opening repertoire analysis
 - [ ] Player vs player statistics
 - [ ] Time control distribution analysis
 - [ ] Result prediction based on opening choice
+- [ ] Automatic backup retention policy (keep last N days)
 
 ## Questions?
 
