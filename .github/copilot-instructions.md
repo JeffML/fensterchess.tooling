@@ -370,6 +370,56 @@ newGames.forEach((game, i) => {
 - Keep chunks ~4000 games each
 - Don't rebalance existing chunks (avoids breaking game ID → chunk mapping)
 
+### Chunk Management Strategy
+
+**Formula**: `chunkId = Math.floor(gameId / 4000)`
+
+**Clean boundaries**:
+- Chunk 0: games 0-3999
+- Chunk 1: games 4000-7999
+- Chunk 2: games 8000-11999
+- Chunk 3: games 12000-15999
+- Chunk 4: games 16000-19999 (currently ~3100 games, room for 900 more)
+- Chunk 5: games 20000+ (new)
+
+**Incremental update algorithm**:
+```typescript
+// Given max existing game ID = 19000
+const maxExistingId = 19000;
+const newGameStartId = maxExistingId + 1; // = 19001
+
+// Assign IDs to new games
+newGames.forEach((game, i) => {
+  game.idx = newGameStartId + i;
+  game.chunkId = Math.floor(game.idx / 4000);
+});
+
+// Group new games by chunk
+const gamesByChunk = groupBy(newGames, 'chunkId');
+// Result: { 4: [150 games], 5: [50 games] }
+
+// Load only affected chunks from blobs
+for (const [chunkId, games] of Object.entries(gamesByChunk)) {
+  const chunk = await loadChunkFromBlobs(chunkId); // or create new if doesn't exist
+  chunk.games.push(...games);
+  chunk.games.sort((a, b) => a.idx - b.idx); // keep sorted by game ID
+  await saveChunkToBlobs(chunkId, chunk);
+}
+```
+
+**Benefits**:
+- Formula maintains clean boundaries
+- Chunks naturally stay ~4000 games
+- No rebalancing needed
+- Game ID → chunk lookup always works: `Math.floor(gameId / 4000)`
+- Only update chunks that receive new games
+
+**Edge case handling**:
+- Chunk 4 has 3100 games → can accept 900 more before chunk 5
+- Add 200 games → all go in chunk 4 (still under 4000)
+- Add 1000 games → 900 in chunk 4, 100 in chunk 5
+- Clean and predictable
+
 ### Source Tracking (Already Implemented)
 
 **Track downloaded files** in `source-tracking.json`:
@@ -401,15 +451,61 @@ newGames.forEach((game, i) => {
 - Lichess: 2 requests / second (documented rate limit)
 - TWIC: 1 request / 2 seconds (TBD based on site)
 
-**Implementation**:
+**For HEAD requests** (checking for updates):
+
+Use HTTP Multipart Batched Request Format to check multiple URLs in a **single HTTP request**:
+
 ```typescript
-async function downloadWithThrottle(urls: string[], delayMs: number) {
-  for (const url of urls) {
-    await download(url);
-    await sleep(delayMs);
+// HTTP Batch request - multiple HEAD requests in one HTTP call
+// Reference: HTTP Multipart Batched Request Format spec
+async function checkMultipleUrls(urls: string[]): Promise<BatchResponse[]> {
+  const boundary = `batch_${Date.now()}`;
+  const batchBody = urls.map((url, i) => 
+    `--${boundary}\r\n` +
+    `Content-Type: application/http\r\n` +
+    `Content-ID: ${i}\r\n\r\n` +
+    `HEAD ${url} HTTP/1.1\r\n\r\n`
+  ).join('') + `--${boundary}--`;
+
+  const response = await fetch('/_batch', {
+    method: 'POST',
+    headers: {
+      'Content-Type': `multipart/mixed; boundary=${boundary}`
+    },
+    body: batchBody
+  });
+
+  // Parse multipart response containing all HEAD response data
+  return parseMultipartResponse(await response.text());
+}
+
+// Check ETags/Last-Modified from batch response
+const responses = await checkMultipleUrls(archiveUrls);
+const updatedFiles = responses.filter(r => hasChanged(r.etag, r.lastModified));
+```
+
+**For actual downloads**:
+```typescript
+async function downloadWithThrottle(urls: string[], options) {
+  for (let i = 0; i < urls.length; i++) {
+    await download(urls[i]);
+    
+    // Processing time provides natural throttling (3-5 min per file)
+    // Prompt checkpoints for monitoring/control
+    if ((i + 1) % 5 === 0 || timeSinceStart > 30 * 60 * 1000) {
+      const answer = await promptUser(`Downloaded ${i + 1}/${urls.length} files. Continue? [Y/n]`);
+      if (answer === 'n') break;
+    }
+    
+    // Only explicit delay if downloading many small files rapidly
+    if (needsThrottling) {
+      await sleep(2000);
+    }
   }
 }
 ```
+
+**Note**: Processing each PGN file takes 3-5 minutes (parsing, filtering, hashing). This provides natural spacing between download requests for most scenarios.
 
 ### Deduplication
 
