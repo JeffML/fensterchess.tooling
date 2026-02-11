@@ -545,6 +545,11 @@ async function discoverPgnmentorFiles(): Promise<void> {
         saveGamesToChunks(allNewGames, indexesDir, lastChunk);
         allNewGames.length = 0; // Clear saved games
 
+        // Update deduplication index
+        const dedupPath = path.join(indexesDir, "deduplication-index.json");
+        fs.writeFileSync(dedupPath, JSON.stringify(deduplicationIndex, null, 2));
+        console.log(`  ✅ Deduplication index updated (${Object.keys(deduplicationIndex).length} unique games)`);
+
         // Update source tracking
         sourceTracking.lastPageVisit = visitDate;
         fs.writeFileSync(sourceTrackingPath, JSON.stringify(sourceTracking, null, 2));
@@ -568,6 +573,10 @@ async function discoverPgnmentorFiles(): Promise<void> {
     console.log(`\n💾 Final save...`);
     saveGamesToChunks(allNewGames, indexesDir, lastChunk);
   }
+
+  // Final deduplication index save
+  const dedupPath = path.join(indexesDir, "deduplication-index.json");
+  fs.writeFileSync(dedupPath, JSON.stringify(deduplicationIndex, null, 2));
 
   // Final source tracking update
   sourceTracking.lastPageVisit = visitDate;
