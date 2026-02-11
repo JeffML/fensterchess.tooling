@@ -17,7 +17,7 @@ import type { IChessGame } from "@chess-pgn/chess-pgn";
  */
 export function shouldImportGame(
   game: IChessGame | any,
-  options?: { requireTitles?: boolean }
+  options?: { requireTitles?: boolean },
 ): boolean {
   // Handle both IChessGame (with getHeaders() method) and metadata objects (with .headers property)
   const header =
@@ -32,6 +32,11 @@ export function shouldImportGame(
 
   // Reject FEN setups (must start from standard position)
   if (header.FEN) {
+    return false;
+  }
+
+  // Reject games in progress (Result = "*" means unfinished)
+  if (header.Result === "*") {
     return false;
   }
 
