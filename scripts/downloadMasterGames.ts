@@ -10,7 +10,6 @@ import { indexPgnGames } from "@chess-pgn/chess-pgn";
 import type {
   GameMetadata,
   DeduplicationIndex,
-  SourceTracking,
 } from "./types.js";
 
 const DOWNLOAD_DIR = "./data/pgn-downloads";
@@ -43,7 +42,7 @@ const LICHESS_ELITE = [
 interface ProcessedGames {
   games: GameMetadata[];
   deduplicationIndex: DeduplicationIndex;
-  sourceTracking: SourceTracking;
+  sourceTracking: any; // Legacy: not using typed tracking anymore
   stats: {
     total: number;
     accepted: number;
@@ -108,7 +107,7 @@ async function processGames(
   sourceFile: string,
   deduplicationIndex: DeduplicationIndex,
   gameIndex: number,
-  filterOptions?: { requireTitles?: boolean }
+  filterOptions?: { requireTitles?: boolean },
 ): Promise<{
   games: GameMetadata[];
   nextIndex: number;
@@ -145,7 +144,7 @@ async function processGames(
 
     try {
       const headers = gameMetadata.headers;
-      
+
       if (!headers) {
         stats.rejected++;
         continue;
@@ -166,8 +165,11 @@ async function processGames(
       }
 
       // Game is accepted - extract just the moves section (not headers)
-      const pgnChunk = pgnContent.slice(gameMetadata.startOffset, gameMetadata.endOffset);
-      
+      const pgnChunk = pgnContent.slice(
+        gameMetadata.startOffset,
+        gameMetadata.endOffset,
+      );
+
       // Strip headers - find where moves start (after last header line and blank line)
       const movesSectionMatch = pgnChunk.match(/\n\n(.+)/s);
       const movesOnly = movesSectionMatch
@@ -223,14 +225,15 @@ async function downloadAndProcessMasters(): Promise<ProcessedGames> {
   // Load existing processed-games.json if it exists (preserves pgnmentor data)
   let allGames: GameMetadata[] = [];
   let deduplicationIndex: DeduplicationIndex = {};
-  let sourceTracking: SourceTracking = { sources: {} };
+  // Legacy script: sourceTracking not used anymore
+  let sourceTracking: any = { sources: {} };
   let gameIndex = 0;
 
   const processedGamesPath = path.join(DOWNLOAD_DIR, "processed-games.json");
   if (fs.existsSync(processedGamesPath)) {
     console.log("📂 Loading existing processed-games.json...");
     const existing: ProcessedGames = JSON.parse(
-      fs.readFileSync(processedGamesPath, "utf-8")
+      fs.readFileSync(processedGamesPath, "utf-8"),
     );
     allGames = existing.games;
     deduplicationIndex = existing.deduplicationIndex;
@@ -280,7 +283,7 @@ async function downloadAndProcessMasters(): Promise<ProcessedGames> {
       master.filename,
       deduplicationIndex,
       gameIndex,
-      { requireTitles: false }
+      { requireTitles: false },
     );
 
     allGames.push(...games);
@@ -315,7 +318,7 @@ async function downloadAndProcessMasters(): Promise<ProcessedGames> {
   for (let i = 0; i < LICHESS_ELITE.length; i++) {
     const source = LICHESS_ELITE[i];
     console.log(
-      `\n[${i + 1}/${LICHESS_ELITE.length}] Processing: ${source.name}`
+      `\n[${i + 1}/${LICHESS_ELITE.length}] Processing: ${source.name}`,
     );
 
     const zipPath = path.join(DOWNLOAD_DIR, source.filename);
@@ -344,7 +347,7 @@ async function downloadAndProcessMasters(): Promise<ProcessedGames> {
       source.filename,
       deduplicationIndex,
       gameIndex,
-      { requireTitles: true }
+      { requireTitles: true },
     );
 
     allGames.push(...games);
@@ -385,7 +388,7 @@ async function downloadAndProcessMasters(): Promise<ProcessedGames> {
     `Rejected: ${totalStats.rejected} (${(
       (totalStats.rejected / totalStats.total) *
       100
-    ).toFixed(1)}%)`
+    ).toFixed(1)}%)`,
   );
   console.log(`Duplicates: ${totalStats.duplicates}`);
   console.log(`Unique games indexed: ${allGames.length}`);
@@ -405,7 +408,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     .then((result) => {
       console.log("✅ Download and processing complete!");
       console.log(
-        `Processed data ready for indexing: ${result.games.length} games`
+        `Processed data ready for indexing: ${result.games.length} games`,
       );
 
       // Save to temporary file for buildIndexes script
@@ -419,8 +422,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
             sourceTracking: result.sourceTracking,
           },
           null,
-          2
-        )
+          2,
+        ),
       );
       console.log(`\n💾 Saved to: ${outputPath}`);
       console.log("\nNext step: Run buildIndexes.ts to create search indexes");

@@ -11,6 +11,7 @@ import type {
   GameMetadata,
   DeduplicationIndex,
   SourceTracking,
+  SiteSourceTracking,
 } from "./types.js";
 
 const DOWNLOAD_DIR = "./data/pgn-downloads";
@@ -30,15 +31,10 @@ interface FileMetadata {
   downloadDate?: string;
 }
 
-interface PgnmentorSourceTracking {
-  lastPageVisit?: string;
-  files: Record<string, FileMetadata>;
-}
-
 interface ProcessedGames {
   games: GameMetadata[];
   deduplicationIndex: DeduplicationIndex;
-  sourceTracking: PgnmentorSourceTracking;
+  sourceTracking: SiteSourceTracking;
   stats: {
     total: number;
     accepted: number;
@@ -442,16 +438,20 @@ async function discoverPgnmentorFiles(): Promise<void> {
   }
 
   // Load existing source tracking
-  const sourceTrackingPath = path.join(DOWNLOAD_DIR, "pgnmentor-tracking.json");
-  let sourceTracking: PgnmentorSourceTracking = { files: {} };
-
+  const sourceTrackingPath = path.join(DOWNLOAD_DIR, "..", "indexes", "source-tracking.json");
+  let allSourceTracking: SourceTracking = {};
+  
   if (fs.existsSync(sourceTrackingPath)) {
-    console.log("📂 Loading existing source tracking...");
-    sourceTracking = JSON.parse(fs.readFileSync(sourceTrackingPath, "utf-8"));
-    console.log(
-      `  ✅ Last page visit: ${sourceTracking.lastPageVisit || "never"}\n`,
-    );
+    allSourceTracking = JSON.parse(fs.readFileSync(sourceTrackingPath, "utf-8"));
   }
+  
+  // Get pgnmentor-specific tracking
+  let sourceTracking: SiteSourceTracking = allSourceTracking.pgnmentor || { files: {} };
+  
+  console.log("📂 Loading pgnmentor source tracking...");
+  console.log(
+    `  ✅ Last page visit: ${sourceTracking.lastPageVisit || "never"}\n`,
+  );
 
   const visitDate = new Date().toISOString();
   const lastVisitDate = sourceTracking.lastPageVisit;
@@ -532,7 +532,8 @@ async function discoverPgnmentorFiles(): Promise<void> {
     
     // Update lastPageVisit to record that we checked
     sourceTracking.lastPageVisit = visitDate;
-    fs.writeFileSync(sourceTrackingPath, JSON.stringify(sourceTracking, null, 2));
+    allSourceTracking.pgnmentor = sourceTracking;
+    fs.writeFileSync(sourceTrackingPath, JSON.stringify(allSourceTracking, null, 2));
     console.log(`✅ Updated lastPageVisit to ${visitDate}\n`);
     return;
   }
@@ -635,9 +636,10 @@ async function discoverPgnmentorFiles(): Promise<void> {
 
         // Update source tracking
         sourceTracking.lastPageVisit = visitDate;
+        allSourceTracking.pgnmentor = sourceTracking;
         fs.writeFileSync(
           sourceTrackingPath,
-          JSON.stringify(sourceTracking, null, 2),
+          JSON.stringify(allSourceTracking, null, 2),
         );
         console.log(`  ✅ Source tracking updated`);
       }
@@ -665,7 +667,8 @@ async function discoverPgnmentorFiles(): Promise<void> {
 
   // Final source tracking update
   sourceTracking.lastPageVisit = visitDate;
-  fs.writeFileSync(sourceTrackingPath, JSON.stringify(sourceTracking, null, 2));
+  allSourceTracking.pgnmentor = sourceTracking;
+  fs.writeFileSync(sourceTrackingPath, JSON.stringify(allSourceTracking, null, 2));
 
   // Final summary
   console.log("\n" + "=".repeat(60));

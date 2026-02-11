@@ -149,15 +149,22 @@ export interface DeduplicationIndex {
  * Source tracking metadata
  * Tracks downloaded files and their metadata for incremental updates
  */
-export interface SourceTracking {
-  sources: {
+export interface SiteSourceTracking {
+  lastPageVisit?: string;
+  files: {
     [filename: string]: {
+      filename: string;
       url: string;
       lastModified?: string;
       etag?: string;
-      size?: number;
-      lastChecked: string;
-      gameCount: number;
+      downloadDate?: string;
+      gameCount?: number;
     };
   };
+}
+
+export interface SourceTracking {
+  pgnmentor?: SiteSourceTracking;
+  lichess?: SiteSourceTracking;
+  twic?: SiteSourceTracking;
 }

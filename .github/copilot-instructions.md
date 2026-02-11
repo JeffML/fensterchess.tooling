@@ -612,19 +612,33 @@ for (const [chunkId, games] of Object.entries(gamesByChunk)) {
    - Compare each file's Last-Modified with `lastPageVisit` time
    - Download only files modified after last page visit
 
-**Track state** in `pgnmentor-tracking.json`:
+**Track state** in `source-tracking.json` (multi-site structure):
 
 ```json
 {
-  "lastPageVisit": "2024-12-20T14:22:00Z",
-  "files": {
-    "Carlsen.zip": {
-      "filename": "Carlsen.zip",
-      "url": "https://pgnmentor.com/players/Carlsen.zip",
-      "downloadDate": "2024-12-20T14:22:00Z",
-      "lastModified": "2024-12-15T10:00:00Z",
-      "etag": "\"abc123...\"",
-      "gameCount": 3845
+  "pgnmentor": {
+    "lastPageVisit": "2024-12-20T14:22:00Z",
+    "files": {
+      "Carlsen.zip": {
+        "filename": "Carlsen.zip",
+        "url": "https://pgnmentor.com/players/Carlsen.zip",
+        "downloadDate": "2024-12-20T14:22:00Z",
+        "lastModified": "2024-12-15T10:00:00Z",
+        "etag": "\"abc123...\"",
+        "gameCount": 3845
+      }
+    }
+  },
+  "lichess": {
+    "lastPageVisit": "2024-12-22T10:00:00Z",
+    "files": {
+      "lichess_elite_2024-12.pgn.zst": {
+        "filename": "lichess_elite_2024-12.pgn.zst",
+        "url": "https://database.lichess.org/elite/lichess_elite_2024-12.pgn.zst",
+        "downloadDate": "2024-12-22T10:15:00Z",
+        "lastModified": "2024-12-01T00:00:00Z",
+        "gameCount": 4521
+      }
     }
   }
 }

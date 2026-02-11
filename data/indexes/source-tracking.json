@@ -1,0 +1,32 @@
+{
+  "pgnmentor": {
+    "lastPageVisit": "2026-01-03T15:11:48.096Z",
+    "files": {
+      "Carlsen.zip": {
+        "filename": "Carlsen.zip",
+        "url": "https://www.pgnmentor.com/players/Carlsen.zip",
+        "gameCount": 6346
+      },
+      "Kasparov.zip": {
+        "filename": "Kasparov.zip",
+        "url": "https://www.pgnmentor.com/players/Kasparov.zip",
+        "gameCount": 1598
+      },
+      "Nakamura.zip": {
+        "filename": "Nakamura.zip",
+        "url": "https://www.pgnmentor.com/players/Nakamura.zip",
+        "gameCount": 7618
+      },
+      "Anand.zip": {
+        "filename": "Anand.zip",
+        "url": "https://www.pgnmentor.com/players/Anand.zip",
+        "gameCount": 3577
+      },
+      "Fischer.zip": {
+        "filename": "Fischer.zip",
+        "url": "https://www.pgnmentor.com/players/Fischer.zip",
+        "gameCount": 72
+      }
+    }
+  }
+}
