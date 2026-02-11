@@ -6,6 +6,8 @@
   "scripts": {
     "download": "tsx scripts/downloadMasterGames.ts",
     "build-indexes": "tsx scripts/buildIndexes.ts",
+    "upload": "node --env-file=.env scripts/uploadToBlobs.js",
+    "test:connection": "node --env-file=.env scripts/testBlobConnection.js",
     "test:filters": "node scripts/testFiltering.js",
     "type-check": "tsc --noEmit"
   },
@@ -25,6 +27,7 @@
     "@chess-openings/eco.json": "^1.1.0",
     "@chess-pgn/chess-pgn": "^1.0.0",
     "@netlify/blobs": "^8.1.0",
+    "adm-zip": "^0.5.16",
     "tsx": "^4.19.2"
   },
   "devDependencies": {
