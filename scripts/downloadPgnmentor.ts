@@ -82,21 +82,78 @@ async function discoverPlayerFiles(): Promise<string[]> {
 }
 
 /**
- * Check HEAD metadata for multiple files using HTTP Multipart Batch request
+ * Check HEAD metadata for all files concurrently (like k6 http.batch())
  * Returns map of filename -> { lastModified, etag }
  */
 async function batchCheckFileMetadata(
   filenames: string[],
 ): Promise<Map<string, { lastModified?: string; etag?: string }>> {
   console.log(
-    `🔍 Checking metadata for ${filenames.length} files (batch HEAD request)...`,
+    `🔍 Checking metadata for ${filenames.length} files concurrently...`,
   );
 
-  // TODO: Implement HTTP Multipart Batched Request Format
-  // For now, return empty map (will be implemented in next iteration)
-  console.log(`  ⚠️  Batch HEAD not yet implemented - will download all files`);
+  const results = new Map<string, { lastModified?: string; etag?: string }>();
 
-  return new Map();
+  // Make all HEAD requests concurrently (k6 batch pattern)
+  const promises = filenames.map(async (filename) => {
+    const url = `${PGNMENTOR_BASE_URL}/players/${filename}`;
+
+    try {
+      const response = await fetch(url, {
+        method: "HEAD",
+        headers: { "User-Agent": USER_AGENT },
+      });
+
+      if (response.ok) {
+        const lastModified = response.headers.get("last-modified") || undefined;
+        const etag = response.headers.get("etag") || undefined;
+
+        return {
+          filename,
+          metadata: { lastModified, etag },
+          success: true,
+        };
+      } else {
+        return {
+          filename,
+          metadata: {},
+          success: false,
+          status: response.status,
+        };
+      }
+    } catch (error) {
+      return {
+        filename,
+        metadata: {},
+        success: false,
+        error: (error as Error).message,
+      };
+    }
+  });
+
+  // Wait for all requests to complete
+  console.log(
+    `  ⏳ Waiting for ${filenames.length} concurrent HEAD requests...`,
+  );
+  const allResults = await Promise.all(promises);
+
+  // Collect results and show summary
+  let successCount = 0;
+  let errorCount = 0;
+
+  for (const result of allResults) {
+    if (result.success) {
+      results.set(result.filename, result.metadata);
+      successCount++;
+    } else {
+      errorCount++;
+    }
+  }
+
+  console.log(
+    `  ✅ Metadata check complete: ${successCount} success, ${errorCount} errors\n`,
+  );
+  return results;
 }
 
 async function downloadFile(url: string, outputPath: string): Promise<boolean> {
@@ -208,8 +265,11 @@ async function processGames(
       }
 
       // Game is accepted - extract just the moves section (not headers)
-      const pgnChunk = pgnContent.slice(gameMetadata.startOffset, gameMetadata.endOffset);
-      
+      const pgnChunk = pgnContent.slice(
+        gameMetadata.startOffset,
+        gameMetadata.endOffset,
+      );
+
       // Strip headers - find where moves start (after last header line and blank line)
       const movesSectionMatch = pgnChunk.match(/\n\n(.+)/s);
       const movesOnly = movesSectionMatch
@@ -340,10 +400,7 @@ function saveGamesToChunks(
     // Check if adding this game would exceed chunk size
     if (currentChunk.games.length >= CHUNK_SIZE) {
       // Save current chunk
-      const chunkPath = path.join(
-        indexesDir,
-        `chunk-${currentChunk.id}.json`,
-      );
+      const chunkPath = path.join(indexesDir, `chunk-${currentChunk.id}.json`);
       fs.writeFileSync(
         chunkPath,
         JSON.stringify({ games: currentChunk.games }, null, 2),
@@ -406,12 +463,16 @@ async function discoverPgnmentorFiles(): Promise<void> {
 
   // Step 3: Classify files as new/modified/unchanged
   const newFiles: string[] = [];
-  const modifiedFiles: Array<{ filename: string; oldDate?: string; newDate?: string }> = [];
+  const modifiedFiles: Array<{
+    filename: string;
+    oldDate?: string;
+    newDate?: string;
+  }> = [];
   const unchangedFiles: string[] = [];
 
   for (const filename of discoveredFiles) {
     const existing = sourceTracking.files[filename];
-    
+
     if (!existing) {
       console.log(`  📥 New file: ${filename}`);
       newFiles.push(filename);
@@ -450,7 +511,7 @@ async function discoverPgnmentorFiles(): Promise<void> {
 
   if (newFiles.length > 0) {
     console.log("\n📥 New files:");
-    newFiles.forEach(f => console.log(`   - ${f}`));
+    newFiles.forEach((f) => console.log(`   - ${f}`));
   }
 
   if (modifiedFiles.length > 0) {
@@ -461,23 +522,28 @@ async function discoverPgnmentorFiles(): Promise<void> {
     });
   }
 
-  const filesToProcess = [...newFiles, ...modifiedFiles.map(f => f.filename)];
+  const filesToProcess = [...newFiles, ...modifiedFiles.map((f) => f.filename)];
 
   if (filesToProcess.length === 0) {
     console.log("\n✅ All files up to date - nothing to download\n");
     return;
   }
 
-  console.log(`\n🚀 Starting download and processing of ${filesToProcess.length} files...\n`);
+  console.log(
+    `\n🚀 Starting download and processing of ${filesToProcess.length} files...\n`,
+  );
 
   // Load existing chunks and deduplication index
   const indexesDir = path.join(DOWNLOAD_DIR, "..", "indexes");
-  const { maxGameId, deduplicationIndex, lastChunk } = loadExistingChunksData(indexesDir);
-  
+  const { maxGameId, deduplicationIndex, lastChunk } =
+    loadExistingChunksData(indexesDir);
+
   console.log(`📊 Current database state:`);
   console.log(`  Max game ID: ${maxGameId}`);
   console.log(`  Unique games: ${Object.keys(deduplicationIndex).length}`);
-  console.log(`  Last chunk: ${lastChunk ? `chunk-${lastChunk.id} (${lastChunk.games.length} games)` : 'none'}\n`);
+  console.log(
+    `  Last chunk: ${lastChunk ? `chunk-${lastChunk.id} (${lastChunk.games.length} games)` : "none"}\n`,
+  );
 
   let nextGameId = maxGameId + 1;
   const totalStats = { total: 0, accepted: 0, rejected: 0, duplicates: 0 };
@@ -488,13 +554,15 @@ async function discoverPgnmentorFiles(): Promise<void> {
     const filename = filesToProcess[i];
     const fileNum = i + 1;
 
-    console.log(`\n[${ fileNum}/${filesToProcess.length}] Processing ${filename}...`);
+    console.log(
+      `\n[${fileNum}/${filesToProcess.length}] Processing ${filename}...`,
+    );
 
     try {
       // Download
       const url = `https://www.pgnmentor.com/players/${filename}`;
       const zipPath = path.join(DOWNLOAD_DIR, filename);
-      
+
       console.log(`  📥 Downloading...`);
       await downloadFile(url, zipPath);
 
@@ -513,7 +581,7 @@ async function discoverPgnmentorFiles(): Promise<void> {
         pgnContent,
         filename,
         deduplicationIndex,
-        nextGameId
+        nextGameId,
       );
 
       // Update stats
@@ -537,31 +605,40 @@ async function discoverPgnmentorFiles(): Promise<void> {
       };
 
       console.log(`  ✅ Imported ${games.length} new games`);
-      console.log(`     Total: ${stats.total}, Accepted: ${stats.accepted}, Rejected: ${stats.rejected}, Duplicates: ${stats.duplicates}`);
+      console.log(
+        `     Total: ${stats.total}, Accepted: ${stats.accepted}, Rejected: ${stats.rejected}, Duplicates: ${stats.duplicates}`,
+      );
 
       // Periodic saves and prompts
-      if ((fileNum % 5 === 0) || (fileNum === filesToProcess.length)) {
+      if (fileNum % 5 === 0 || fileNum === filesToProcess.length) {
         console.log(`\n💾 Saving progress after ${fileNum} files...`);
         saveGamesToChunks(allNewGames, indexesDir, lastChunk);
         allNewGames.length = 0; // Clear saved games
 
         // Update deduplication index
         const dedupPath = path.join(indexesDir, "deduplication-index.json");
-        fs.writeFileSync(dedupPath, JSON.stringify(deduplicationIndex, null, 2));
-        console.log(`  ✅ Deduplication index updated (${Object.keys(deduplicationIndex).length} unique games)`);
+        fs.writeFileSync(
+          dedupPath,
+          JSON.stringify(deduplicationIndex, null, 2),
+        );
+        console.log(
+          `  ✅ Deduplication index updated (${Object.keys(deduplicationIndex).length} unique games)`,
+        );
 
         // Update source tracking
         sourceTracking.lastPageVisit = visitDate;
-        fs.writeFileSync(sourceTrackingPath, JSON.stringify(sourceTracking, null, 2));
+        fs.writeFileSync(
+          sourceTrackingPath,
+          JSON.stringify(sourceTracking, null, 2),
+        );
         console.log(`  ✅ Source tracking updated`);
       }
 
       // Throttle
       if (i < filesToProcess.length - 1) {
         console.log(`  ⏳ Throttling ${THROTTLE_MS}ms...`);
-        await new Promise(resolve => setTimeout(resolve, THROTTLE_MS));
+        await new Promise((resolve) => setTimeout(resolve, THROTTLE_MS));
       }
-
     } catch (error) {
       console.error(`  ❌ Error processing ${filename}:`, error);
       // Continue with next file
