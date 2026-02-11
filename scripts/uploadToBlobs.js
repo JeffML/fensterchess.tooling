@@ -3,9 +3,27 @@
 
 import fs from "fs";
 import path from "path";
+import readline from "readline";
 import { getStore } from "@netlify/blobs";
 
 const INDEXES_DIR = "./data/indexes";
+
+/**
+ * Prompt user for confirmation
+ */
+function promptConfirmation(question) {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer.toLowerCase() === "y" || answer.toLowerCase() === "yes");
+    });
+  });
+}
 
 async function uploadToBlobs() {
   console.log("📤 Uploading master game indexes to Netlify Blobs...\n");
@@ -45,54 +63,154 @@ async function uploadToBlobs() {
 
   console.log(`Found ${files.length} index files to upload:\n`);
 
+  // Fetch existing blobs to compare
+  console.log("🔍 Checking existing blobs in store...\n");
+  const { blobs } = await store.list({ prefix: "indexes/" });
+  const existingBlobsMap = new Map();
+
+  // Download existing blob metadata (we'll compare content for modified detection)
+  for (const blob of blobs) {
+    existingBlobsMap.set(blob.key, blob);
+  }
+
+  // Categorize files: new, modified, unchanged
+  const newFiles = [];
+  const modifiedFiles = [];
+  const unchangedFiles = [];
+  let totalLocalSize = 0;
+  let totalRemoteSize = 0;
+
+  for (const filename of files) {
+    const filepath = path.join(INDEXES_DIR, filename);
+    const stats = fs.statSync(filepath);
+    const localSize = stats.size;
+    const blobKey = `indexes/${filename}`;
+
+    totalLocalSize += localSize;
+
+    if (!existingBlobsMap.has(blobKey)) {
+      // New file
+      newFiles.push({ filename, size: localSize, key: blobKey });
+    } else {
+      // File exists - compare content to detect modifications
+      const localContent = fs.readFileSync(filepath, "utf-8");
+      const remoteContent = await store.get(blobKey, { type: "text" });
+      const remoteSize = remoteContent ? Buffer.byteLength(remoteContent, "utf-8") : 0;
+
+      totalRemoteSize += remoteSize;
+
+      if (localContent !== remoteContent) {
+        // Content differs - modified
+        modifiedFiles.push({
+          filename,
+          localSize,
+          remoteSize,
+          key: blobKey,
+          sizeDiff: localSize - remoteSize,
+        });
+      } else {
+        // Same content - unchanged
+        unchangedFiles.push({ filename, size: localSize, key: blobKey });
+      }
+    }
+  }
+
+  // Calculate size for new files
+  totalRemoteSize += newFiles.reduce((sum, f) => sum + (existingBlobsMap.get(f.key)?.size || 0), 0);
+
+  // Show diff summary
+  console.log("=".repeat(60));
+  console.log("📊 Upload Summary");
+  console.log("=".repeat(60));
+
+  if (newFiles.length > 0) {
+    console.log(`\n🆕 New files (${newFiles.length}):`);
+    newFiles.forEach((f) => {
+      const sizeMB = (f.size / 1024 / 1024).toFixed(2);
+      console.log(`   + ${f.filename} (${sizeMB} MB)`);
+    });
+  }
+
+  if (modifiedFiles.length > 0) {
+    console.log(`\n✏️  Modified files (${modifiedFiles.length}):`);
+    modifiedFiles.forEach((f) => {
+      const localMB = (f.localSize / 1024 / 1024).toFixed(2);
+      const remoteMB = (f.remoteSize / 1024 / 1024).toFixed(2);
+      const diffSign = f.sizeDiff >= 0 ? "+" : "";
+      const diffMB = (Math.abs(f.sizeDiff) / 1024 / 1024).toFixed(2);
+      console.log(
+        `   ~ ${f.filename} (${localMB} MB, was ${remoteMB} MB, ${diffSign}${diffMB} MB)`,
+      );
+    });
+  }
+
+  if (unchangedFiles.length > 0) {
+    console.log(`\n✓ Unchanged files (${unchangedFiles.length}):`);
+    unchangedFiles.forEach((f) => {
+      const sizeMB = (f.size / 1024 / 1024).toFixed(2);
+      console.log(`   = ${f.filename} (${sizeMB} MB)`);
+    });
+  }
+
+  console.log("\n" + "-".repeat(60));
+  console.log(`Total files:       ${files.length}`);
+  console.log(`Local size:        ${(totalLocalSize / 1024 / 1024).toFixed(2)} MB`);
+  console.log(`Changes:           ${newFiles.length} new, ${modifiedFiles.length} modified, ${unchangedFiles.length} unchanged`);
+  console.log("=".repeat(60));
+
+  // If nothing to upload, exit
+  if (newFiles.length === 0 && modifiedFiles.length === 0) {
+    console.log("\n✓ All files are up to date. Nothing to upload.");
+    return;
+  }
+
+  // Prompt for confirmation
+  console.log();
+  const confirmed = await promptConfirmation(
+    "Continue with upload? [y/N]: ",
+  );
+
+  if (!confirmed) {
+    console.log("\n❌ Upload cancelled by user.");
+    process.exit(0);
+  }
+
+  // Upload files
+  console.log("\n📤 Uploading files...\n");
   let totalSize = 0;
   const uploads = [];
 
-  // Upload each file
-  for (const filename of files) {
-    const filepath = path.join(INDEXES_DIR, filename);
+  const filesToUpload = [...newFiles, ...modifiedFiles];
+
+  for (const fileInfo of filesToUpload) {
+    const filepath = path.join(INDEXES_DIR, fileInfo.filename);
     const stats = fs.statSync(filepath);
     const sizeMB = (stats.size / 1024 / 1024).toFixed(2);
     totalSize += stats.size;
 
-    console.log(`📁 ${filename} (${sizeMB} MB)`);
+    console.log(`📁 ${fileInfo.filename} (${sizeMB} MB)`);
 
     try {
       const content = fs.readFileSync(filepath, "utf-8");
-      const blobKey = `indexes/${filename}`; // Store under indexes/ prefix
-
-      await store.set(blobKey, content);
-      uploads.push({ filename, size: stats.size, key: blobKey });
-      console.log(`   ✅ Uploaded as ${blobKey}\n`);
+      await store.set(fileInfo.key, content);
+      uploads.push({ filename: fileInfo.filename, size: stats.size, key: fileInfo.key });
+      console.log(`   ✅ Uploaded\n`);
     } catch (error) {
-      console.error(`   ❌ Failed to upload ${filename}:`, error.message);
+      console.error(`   ❌ Failed to upload ${fileInfo.filename}:`, error.message);
       process.exit(1);
     }
   }
 
-  // Summary
+  // Final Summary
   console.log("\n" + "=".repeat(60));
-  console.log("📊 Upload Summary");
+  console.log("🎉 Upload Complete");
   console.log("=".repeat(60));
-  console.log(`Total files:     ${uploads.length}`);
+  console.log(`Files uploaded:  ${uploads.length}`);
   console.log(`Total size:      ${(totalSize / 1024 / 1024).toFixed(2)} MB`);
   console.log(`Blob store:      master-games`);
   console.log(`Site ID:         ${process.env.SITE_ID.substring(0, 8)}...`);
   console.log("=".repeat(60));
-
-  // List all blobs to verify
-  console.log("\n📋 Verifying blobs in store...");
-  const { blobs } = await store.list({ prefix: "indexes/" });
-  console.log(`Found ${blobs.length} blobs with 'indexes/' prefix:`);
-  blobs.forEach((blob) => {
-    console.log(`   - ${blob.key}`);
-  });
-
-  console.log("\n🎉 Upload complete!");
-  console.log("   Master game indexes are now available in Netlify Blobs.");
-  console.log(
-    "   Next: Update fensterchess serverless functions to read from blobs.",
-  );
+  console.log("\n✓ Master game indexes are now available in Netlify Blobs.");
 }
 
 uploadToBlobs().catch((error) => {
