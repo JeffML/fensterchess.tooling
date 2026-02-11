@@ -6,7 +6,7 @@ import path from "path";
 import AdmZip from "adm-zip";
 import { shouldImportGame } from "./filterGame.js";
 import { hashGame } from "./hashGame.js";
-import { indexPgnGames, ChessPGN } from "@chess-pgn/chess-pgn";
+import { indexPgnGames } from "@chess-pgn/chess-pgn";
 import type {
   GameMetadata,
   DeduplicationIndex,
@@ -127,89 +127,85 @@ async function processGames(
     duplicates: 0,
   };
 
-  console.log(`  Parsing games with workers...`);
+  console.log(`  Parsing games...`);
 
-  // Use indexPgnGames with workers for fast parallel processing
-  const cursor = indexPgnGames(pgnContent, {
-    workers: 4,
-    workerBatchSize: 100,
-  });
+  // Index game boundaries (fast, no full parsing)
+  const indices = indexPgnGames(pgnContent);
 
   let processed = 0;
   const progressInterval = 100;
 
-  try {
-    for await (const game of cursor) {
-      stats.total++;
-      processed++;
+  for (const gameMetadata of indices) {
+    stats.total++;
+    processed++;
 
-      if (processed % progressInterval === 0) {
-        process.stdout.write(`\r  Processing: ${processed} games...`);
-      }
-
-      try {
-        const headers = game.headers;
-        
-        if (!headers) {
-          stats.rejected++;
-          continue;
-        }
-
-        // Apply filtering (pass options for site-specific rules)
-        if (!shouldImportGame(game, filterOptions)) {
-          stats.rejected++;
-          continue;
-        }
-
-        // Check for duplicates (hash based on headers only, no moves needed)
-        const hash = hashGame(headers);
-        if (deduplicationIndex[hash] !== undefined) {
-          stats.duplicates++;
-          continue;
-        }
-
-        // Game is accepted - extract just the moves section (not headers)
-        const pgnChunk = pgnContent.slice(game.startOffset, game.endOffset);
-
-        // Strip headers - find where moves start (after last header line and blank line)
-        const movesSectionMatch = pgnChunk.match(/\n\n(.+)/s);
-        const movesOnly = movesSectionMatch
-          ? movesSectionMatch[1].trim()
-          : pgnChunk;
-
-        const metadata: GameMetadata = {
-          idx: gameIndex,
-          white: headers.White || "Unknown",
-          black: headers.Black || "Unknown",
-          whiteElo: parseInt(headers.WhiteElo || "0"),
-          blackElo: parseInt(headers.BlackElo || "0"),
-          result: headers.Result || "*",
-          date: headers.Date || "????.??.??",
-          event: headers.Event || "Unknown",
-          site: headers.Site || "?",
-          eco: headers.ECO,
-          opening: headers.Opening,
-          variation: headers.Variation,
-          subVariation: headers.SubVariation,
-          moves: movesOnly, // Store only moves section (no headers)
-          ply: 0, // Will be calculated in buildIndexes
-          source: "pgnmentor",
-          sourceFile,
-          hash,
-        };
-
-        games.push(metadata);
-        deduplicationIndex[hash] = gameIndex;
-        gameIndex++;
-        stats.accepted++;
-      } catch (error) {
-        // Error processing this game
-        stats.rejected++;
-      }
+    if (processed % progressInterval === 0) {
+      process.stdout.write(`\r  Processing: ${processed} games...`);
     }
-  } finally {
-    process.stdout.write(`\r  Processing: ${stats.total} games complete!\n`);
+
+    try {
+      const headers = gameMetadata.headers;
+      
+      if (!headers) {
+        stats.rejected++;
+        continue;
+      }
+
+      // Apply filtering (pass options for site-specific rules)
+      // Note: shouldImportGame() handles metadata objects with .headers property
+      if (!shouldImportGame(gameMetadata, filterOptions)) {
+        stats.rejected++;
+        continue;
+      }
+
+      // Check for duplicates (hash based on headers only, no moves needed)
+      const hash = hashGame(headers);
+      if (deduplicationIndex[hash] !== undefined) {
+        stats.duplicates++;
+        continue;
+      }
+
+      // Game is accepted - extract just the moves section (not headers)
+      const pgnChunk = pgnContent.slice(gameMetadata.startOffset, gameMetadata.endOffset);
+      
+      // Strip headers - find where moves start (after last header line and blank line)
+      const movesSectionMatch = pgnChunk.match(/\n\n(.+)/s);
+      const movesOnly = movesSectionMatch
+        ? movesSectionMatch[1].trim()
+        : pgnChunk;
+
+      const metadata: GameMetadata = {
+        idx: gameIndex,
+        white: headers.White || "Unknown",
+        black: headers.Black || "Unknown",
+        whiteElo: parseInt(headers.WhiteElo || "0"),
+        blackElo: parseInt(headers.BlackElo || "0"),
+        result: headers.Result || "*",
+        date: headers.Date || "????.??.??",
+        event: headers.Event || "Unknown",
+        site: headers.Site || "?",
+        eco: headers.ECO,
+        opening: headers.Opening,
+        variation: headers.Variation,
+        subVariation: headers.SubVariation,
+        moves: movesOnly, // Store only moves section (no headers)
+        ply: 0, // Will be calculated in buildIndexes
+        source: "pgnmentor",
+        sourceFile,
+        hash,
+      };
+
+      games.push(metadata);
+      deduplicationIndex[hash] = gameIndex;
+      gameIndex++;
+      stats.accepted++;
+    } catch (error) {
+      // Error processing this game
+      stats.rejected++;
+    }
   }
+
+  process.stdout.write(`\r  Processing: ${stats.total} games complete!\n`);
 
   return { games, nextIndex: gameIndex, stats };
 }

@@ -19,10 +19,10 @@ export function shouldImportGame(
   game: IChessGame | any,
   options?: { requireTitles?: boolean }
 ): boolean {
-  // Handle both IChessGame (with header() method) and metadata objects (with .headers property)
+  // Handle both IChessGame (with getHeaders() method) and metadata objects (with .headers property)
   const header =
-    typeof (game as any).header === "function"
-      ? (game as IChessGame).header()
+    typeof (game as any).getHeaders === "function"
+      ? (game as IChessGame).getHeaders()
       : (game as any).headers || {};
 
   // Reject variants (only standard chess)

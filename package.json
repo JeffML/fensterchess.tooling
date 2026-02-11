@@ -5,10 +5,13 @@
   "type": "module",
   "scripts": {
     "download": "tsx scripts/downloadMasterGames.ts",
+    "download:pgnmentor": "tsx scripts/downloadPgnmentor.ts",
     "build-indexes": "tsx scripts/buildIndexes.ts",
     "upload": "node --env-file=.env scripts/uploadToBlobs.js",
     "test:connection": "node --env-file=.env scripts/testBlobConnection.js",
-    "test:filters": "node scripts/testFiltering.js",
+    "test:filters": "node test/testFiltering.js",
+    "test:chunks": "tsx test/testChunkLogic.ts",
+    "test:pipeline": "tsx test/testPipeline.ts",
     "type-check": "tsc --noEmit"
   },
   "keywords": [
@@ -31,6 +34,7 @@
     "tsx": "^4.19.2"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.7",
     "@types/node": "^22.10.2",
     "typescript": "^5.7.2"
   },

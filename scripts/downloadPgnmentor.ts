@@ -27,6 +27,7 @@ interface FileMetadata {
   etag?: string;
   size?: number;
   gameCount?: number;
+  downloadDate?: string;
 }
 
 interface PgnmentorSourceTracking {
@@ -168,91 +169,210 @@ async function processGames(
     duplicates: 0,
   };
 
-  console.log(`  Parsing games with workers...`);
+  console.log(`  Parsing games...`);
 
-  // Use indexPgnGames with workers for fast parallel processing
-  const cursor = indexPgnGames(pgnContent, {
-    workers: 4,
-    workerBatchSize: 100,
-  });
+  // Index game boundaries (fast, no full parsing)
+  const indices = indexPgnGames(pgnContent);
 
   let processed = 0;
   const progressInterval = 100;
 
-  try {
-    for await (const game of cursor) {
-      stats.total++;
-      processed++;
+  for (const gameMetadata of indices) {
+    stats.total++;
+    processed++;
 
-      if (processed % progressInterval === 0) {
-        process.stdout.write(`\r  Processing: ${processed} games...`);
-      }
-
-      try {
-        const headers = game.headers;
-
-        if (!headers) {
-          stats.rejected++;
-          continue;
-        }
-
-        // Apply filtering (pgnmentor: no title requirement)
-        if (!shouldImportGame(game, { requireTitles: false })) {
-          stats.rejected++;
-          continue;
-        }
-
-        // Check for duplicates (hash based on headers only, no moves needed)
-        const hash = hashGame(headers);
-        if (deduplicationIndex[hash] !== undefined) {
-          stats.duplicates++;
-          continue;
-        }
-
-        // Game is accepted - extract just the moves section (not headers)
-        const pgnChunk = pgnContent.slice(game.startOffset, game.endOffset);
-
-        // Strip headers - find where moves start (after last header line and blank line)
-        const movesSectionMatch = pgnChunk.match(/\n\n(.+)/s);
-        const movesOnly = movesSectionMatch
-          ? movesSectionMatch[1].trim()
-          : pgnChunk;
-
-        const metadata: GameMetadata = {
-          idx: gameIndex,
-          white: headers.White || "Unknown",
-          black: headers.Black || "Unknown",
-          whiteElo: parseInt(headers.WhiteElo || "0"),
-          blackElo: parseInt(headers.BlackElo || "0"),
-          result: headers.Result || "*",
-          date: headers.Date || "????.??.??",
-          event: headers.Event || "Unknown",
-          site: headers.Site || "?",
-          eco: headers.ECO,
-          opening: headers.Opening,
-          variation: headers.Variation,
-          subVariation: headers.SubVariation,
-          moves: movesOnly, // Store only moves section (no headers)
-          ply: 0, // Will be calculated in buildIndexes
-          source: "pgnmentor",
-          sourceFile,
-          hash,
-        };
-
-        games.push(metadata);
-        deduplicationIndex[hash] = gameIndex;
-        gameIndex++;
-        stats.accepted++;
-      } catch (error) {
-        // Error processing this game
-        stats.rejected++;
-      }
+    if (processed % progressInterval === 0) {
+      process.stdout.write(`\r  Processing: ${processed} games...`);
     }
-  } finally {
-    process.stdout.write(`\r  Processing: ${stats.total} games complete!\n`);
+
+    try {
+      const headers = gameMetadata.headers;
+
+      if (!headers) {
+        stats.rejected++;
+        continue;
+      }
+
+      // Apply filtering (pgnmentor: no title requirement)
+      // Note: shouldImportGame() handles metadata objects with .headers property
+      if (!shouldImportGame(gameMetadata, { requireTitles: false })) {
+        stats.rejected++;
+        continue;
+      }
+
+      // Check for duplicates (hash based on headers only, no moves needed)
+      const hash = hashGame(headers);
+      if (deduplicationIndex[hash] !== undefined) {
+        stats.duplicates++;
+        continue;
+      }
+
+      // Game is accepted - extract just the moves section (not headers)
+      const pgnChunk = pgnContent.slice(gameMetadata.startOffset, gameMetadata.endOffset);
+      
+      // Strip headers - find where moves start (after last header line and blank line)
+      const movesSectionMatch = pgnChunk.match(/\n\n(.+)/s);
+      const movesOnly = movesSectionMatch
+        ? movesSectionMatch[1].trim()
+        : pgnChunk;
+
+      const metadata: GameMetadata = {
+        idx: gameIndex,
+        white: headers.White || "Unknown",
+        black: headers.Black || "Unknown",
+        whiteElo: parseInt(headers.WhiteElo || "0"),
+        blackElo: parseInt(headers.BlackElo || "0"),
+        result: headers.Result || "*",
+        date: headers.Date || "????.??.??",
+        event: headers.Event || "Unknown",
+        site: headers.Site || "?",
+        eco: headers.ECO,
+        opening: headers.Opening,
+        variation: headers.Variation,
+        subVariation: headers.SubVariation,
+        moves: movesOnly, // Store only moves section (no headers)
+        ply: 0, // Will be calculated in buildIndexes
+        source: "pgnmentor",
+        sourceFile,
+        hash,
+      };
+
+      games.push(metadata);
+      deduplicationIndex[hash] = gameIndex;
+      gameIndex++;
+      stats.accepted++;
+    } catch (error) {
+      // Error processing this game
+      stats.rejected++;
+    }
   }
 
+  process.stdout.write(`\r  Processing: ${stats.total} games complete!\n`);
+
   return { games, nextIndex: gameIndex, stats };
+}
+
+/**
+ * Load existing chunks and find max game ID + deduplication index
+ */
+function loadExistingChunksData(indexesDir: string): {
+  maxGameId: number;
+  deduplicationIndex: DeduplicationIndex;
+  lastChunk: { id: number; games: GameMetadata[] } | null;
+} {
+  if (!fs.existsSync(indexesDir)) {
+    return { maxGameId: -1, deduplicationIndex: {}, lastChunk: null };
+  }
+
+  // Find all existing chunks
+  const chunkFiles = fs
+    .readdirSync(indexesDir)
+    .filter((f) => f.startsWith("chunk-") && f.endsWith(".json"))
+    .sort((a, b) => {
+      const numA = parseInt(a.match(/chunk-(\d+)/)?.[1] || "0");
+      const numB = parseInt(b.match(/chunk-(\d+)/)?.[1] || "0");
+      return numA - numB;
+    });
+
+  if (chunkFiles.length === 0) {
+    return { maxGameId: -1, deduplicationIndex: {}, lastChunk: null };
+  }
+
+  // Load last chunk
+  const lastChunkFile = chunkFiles[chunkFiles.length - 1];
+  const lastChunkId = parseInt(lastChunkFile.match(/chunk-(\d+)/)?.[1] || "0");
+  const lastChunkPath = path.join(indexesDir, lastChunkFile);
+  const lastChunkData: { games: GameMetadata[] } = JSON.parse(
+    fs.readFileSync(lastChunkPath, "utf-8"),
+  );
+
+  // Find max game ID across all games in last chunk
+  let maxGameId = -1;
+  const deduplicationIndex: DeduplicationIndex = {};
+
+  // Build dedup index from all chunks
+  for (const chunkFile of chunkFiles) {
+    const chunkPath = path.join(indexesDir, chunkFile);
+    const chunk: { games: GameMetadata[] } = JSON.parse(
+      fs.readFileSync(chunkPath, "utf-8"),
+    );
+
+    for (const game of chunk.games) {
+      if (game.idx > maxGameId) {
+        maxGameId = game.idx;
+      }
+      if (game.hash) {
+        deduplicationIndex[game.hash] = game.idx;
+      }
+    }
+  }
+
+  return {
+    maxGameId,
+    deduplicationIndex,
+    lastChunk: { id: lastChunkId, games: lastChunkData.games },
+  };
+}
+
+/**
+ * Save games to chunks, respecting 4000 game limit per chunk
+ */
+function saveGamesToChunks(
+  games: GameMetadata[],
+  indexesDir: string,
+  existingLastChunk: { id: number; games: GameMetadata[] } | null,
+): void {
+  if (games.length === 0) return;
+
+  // Ensure indexes directory exists
+  if (!fs.existsSync(indexesDir)) {
+    fs.mkdirSync(indexesDir, { recursive: true });
+  }
+
+  const CHUNK_SIZE = 4000;
+  let currentChunk = existingLastChunk
+    ? { id: existingLastChunk.id, games: [...existingLastChunk.games] }
+    : { id: 0, games: [] };
+
+  let gamesAdded = 0;
+
+  for (const game of games) {
+    // Check if adding this game would exceed chunk size
+    if (currentChunk.games.length >= CHUNK_SIZE) {
+      // Save current chunk
+      const chunkPath = path.join(
+        indexesDir,
+        `chunk-${currentChunk.id}.json`,
+      );
+      fs.writeFileSync(
+        chunkPath,
+        JSON.stringify({ games: currentChunk.games }, null, 2),
+      );
+      console.log(
+        `  💾 Saved chunk-${currentChunk.id}.json (${currentChunk.games.length} games)`,
+      );
+
+      // Start new chunk
+      currentChunk = { id: currentChunk.id + 1, games: [] };
+    }
+
+    currentChunk.games.push(game);
+    gamesAdded++;
+  }
+
+  // Save final chunk
+  if (currentChunk.games.length > 0) {
+    const chunkPath = path.join(indexesDir, `chunk-${currentChunk.id}.json`);
+    fs.writeFileSync(
+      chunkPath,
+      JSON.stringify({ games: currentChunk.games }, null, 2),
+    );
+    console.log(
+      `  💾 Saved chunk-${currentChunk.id}.json (${currentChunk.games.length} games)`,
+    );
+  }
+
+  console.log(`  ✅ Total games added to chunks: ${gamesAdded}`);
 }
 
 async function discoverPgnmentorFiles(): Promise<void> {
@@ -341,15 +461,138 @@ async function discoverPgnmentorFiles(): Promise<void> {
     });
   }
 
-  console.log("\n✅ Discovery complete - no downloads performed yet\n");
+  const filesToProcess = [...newFiles, ...modifiedFiles.map(f => f.filename)];
+
+  if (filesToProcess.length === 0) {
+    console.log("\n✅ All files up to date - nothing to download\n");
+    return;
+  }
+
+  console.log(`\n🚀 Starting download and processing of ${filesToProcess.length} files...\n`);
+
+  // Load existing chunks and deduplication index
+  const indexesDir = path.join(DOWNLOAD_DIR, "..", "indexes");
+  const { maxGameId, deduplicationIndex, lastChunk } = loadExistingChunksData(indexesDir);
+  
+  console.log(`📊 Current database state:`);
+  console.log(`  Max game ID: ${maxGameId}`);
+  console.log(`  Unique games: ${Object.keys(deduplicationIndex).length}`);
+  console.log(`  Last chunk: ${lastChunk ? `chunk-${lastChunk.id} (${lastChunk.games.length} games)` : 'none'}\n`);
+
+  let nextGameId = maxGameId + 1;
+  const totalStats = { total: 0, accepted: 0, rejected: 0, duplicates: 0 };
+  const allNewGames: GameMetadata[] = [];
+
+  // Process each file
+  for (let i = 0; i < filesToProcess.length; i++) {
+    const filename = filesToProcess[i];
+    const fileNum = i + 1;
+
+    console.log(`\n[${ fileNum}/${filesToProcess.length}] Processing ${filename}...`);
+
+    try {
+      // Download
+      const url = `https://www.pgnmentor.com/players/${filename}`;
+      const zipPath = path.join(DOWNLOAD_DIR, filename);
+      
+      console.log(`  📥 Downloading...`);
+      await downloadFile(url, zipPath);
+
+      // Extract
+      console.log(`  📦 Extracting...`);
+      const pgnContent = extractZip(zipPath);
+
+      if (!pgnContent) {
+        console.error(`  ❌ No PGN content found in ${filename}`);
+        continue;
+      }
+
+      // Process games
+      console.log(`  ⚙️  Processing games...`);
+      const { games, nextIndex, stats } = await processGames(
+        pgnContent,
+        filename,
+        deduplicationIndex,
+        nextGameId
+      );
+
+      // Update stats
+      totalStats.total += stats.total;
+      totalStats.accepted += stats.accepted;
+      totalStats.rejected += stats.rejected;
+      totalStats.duplicates += stats.duplicates;
+
+      allNewGames.push(...games);
+      nextGameId = nextIndex;
+
+      // Update source tracking for this file
+      const metadata = fileMetadataMap.get(filename);
+      sourceTracking.files[filename] = {
+        filename,
+        url,
+        downloadDate: new Date().toISOString(),
+        lastModified: metadata?.lastModified,
+        etag: metadata?.etag,
+        gameCount: games.length,
+      };
+
+      console.log(`  ✅ Imported ${games.length} new games`);
+      console.log(`     Total: ${stats.total}, Accepted: ${stats.accepted}, Rejected: ${stats.rejected}, Duplicates: ${stats.duplicates}`);
+
+      // Periodic saves and prompts
+      if ((fileNum % 5 === 0) || (fileNum === filesToProcess.length)) {
+        console.log(`\n💾 Saving progress after ${fileNum} files...`);
+        saveGamesToChunks(allNewGames, indexesDir, lastChunk);
+        allNewGames.length = 0; // Clear saved games
+
+        // Update source tracking
+        sourceTracking.lastPageVisit = visitDate;
+        fs.writeFileSync(sourceTrackingPath, JSON.stringify(sourceTracking, null, 2));
+        console.log(`  ✅ Source tracking updated`);
+      }
+
+      // Throttle
+      if (i < filesToProcess.length - 1) {
+        console.log(`  ⏳ Throttling ${THROTTLE_MS}ms...`);
+        await new Promise(resolve => setTimeout(resolve, THROTTLE_MS));
+      }
+
+    } catch (error) {
+      console.error(`  ❌ Error processing ${filename}:`, error);
+      // Continue with next file
+    }
+  }
+
+  // Final save (if any remaining games)
+  if (allNewGames.length > 0) {
+    console.log(`\n💾 Final save...`);
+    saveGamesToChunks(allNewGames, indexesDir, lastChunk);
+  }
+
+  // Final source tracking update
+  sourceTracking.lastPageVisit = visitDate;
+  fs.writeFileSync(sourceTrackingPath, JSON.stringify(sourceTracking, null, 2));
+
+  // Final summary
+  console.log("\n" + "=".repeat(60));
+  console.log("📊 Processing Complete");
+  console.log("=".repeat(60));
+  console.log(`Files processed: ${filesToProcess.length}`);
+  console.log(`Total games: ${totalStats.total}`);
+  console.log(`Accepted: ${totalStats.accepted}`);
+  console.log(`Rejected: ${totalStats.rejected}`);
+  console.log(`Duplicates skipped: ${totalStats.duplicates}`);
+  console.log(`Next game ID: ${nextGameId}`);
+  console.log("=".repeat(60));
+  console.log("\n✅ Download and chunking complete!\n");
 }
 
 // Run if executed directly
 if (import.meta.url === `file://${process.argv[1]}`) {
   discoverPgnmentorFiles()
     .then(() => {
-      console.log("✅ File discovery complete!");
-      console.log("\nNext step: Implement download logic for new/modified files");
+      console.log("✅ pgnmentor.com download complete!");
+      console.log("\nNext step: Discuss index update strategy");
     })
     .catch((error) => {
       console.error("❌ Failed:", error);
