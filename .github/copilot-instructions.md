@@ -22,8 +22,14 @@ Download → Filter → Hash/Dedupe → Build Indexes → Chunk → Upload to Ne
 
 ### Scripts
 
-- **`downloadMasterGames.ts`** - Downloads PGN files from pgnmentor.com and Lichess Elite
-- **`buildIndexes.ts`** - Generates all search indexes from processed games
+- **`downloadPgnmentor.ts`** - Site-specific downloader for pgnmentor.com player files
+  - Discovers 250 player files from /files.html page
+  - Downloads, extracts, parses, filters, and chunks games
+  - Incremental updates: loads existing chunks, continues from max game ID
+  - Updates deduplication index during download
+  - Periodic saves every 5 files with progress checkpoints
+- **`downloadMasterGames.ts`** - Legacy downloader (to be deprecated)
+- **`buildIndexes.ts`** - Generates all search indexes from chunks
 - **`filterGame.ts`** - Site-specific quality filters
 - **`hashGame.ts`** - Deterministic game hashing for deduplication
 - **`types.ts`** - TypeScript interfaces for GameMetadata, indexes, etc.
@@ -222,13 +228,29 @@ await store.set("indexes/master-index.json", JSON.stringify(masterIndex));
 
 ## Common Operations
 
-### Download Latest Games
+### Download Latest Games (Legacy)
 
 ```bash
 npm run download
 # or
 tsx scripts/downloadMasterGames.ts
 ```
+
+### Download from pgnmentor.com
+
+```bash
+npm run download:pgnmentor
+# or  
+tsx scripts/downloadPgnmentor.ts
+```
+
+This will:
+1. Discover all 250 player files from pgnmentor.com/files.html
+2. Compare with existing tracking data
+3. Download and process new/modified files only
+4. Update chunks incrementally
+5. Update deduplication index
+6. Save progress every 5 files
 
 ### Build Indexes
 
@@ -251,8 +273,147 @@ tsx scripts/uploadToBlobs.ts  # TODO: Create this script
 ```bash
 npm run test:filters
 # or
-tsx scripts/testFiltering.js
+tsx test/testFiltering.js
 ```
+
+### Test Chunk Logic
+
+```bash
+npm run test:chunks
+# Validates chunk boundaries, formula, and deduplication index
+```
+
+### Test Pipeline
+
+```bash
+npm run test:pipeline
+# Pre-flight checks: imports, current state, existing files
+```
+
+## Index Update Strategy
+
+**Hybrid Approach** - Incremental deduplication, batch rebuild for everything else:
+
+### During Download
+
+- **`deduplication-index.json`** - Update incrementally (REQUIRED)
+  - Loaded at start to prevent duplicate imports
+  - Updated after each file is processed
+  - Enables filtering during 20-minute download process
+
+### After Download
+
+- **All other indexes** - Batch rebuild from chunks
+  - Run `npm run build-indexes` after downloads complete
+  - Simple, atomic operation - all or nothing
+  - Easy error recovery - just rebuild
+  - Indexes may be stale during download (acceptable)
+
+**Rationale:**
+- Deduplication must work during download to prevent duplicate games
+- Query indexes (player, opening, ECO, etc.) can be rebuilt anytime
+- Simpler error handling - if download fails, just rebuild indexes
+- Chunks are source of truth - all other data is derived
+
+## Indelible Data Principles
+
+**Critical data that MUST be preserved and NEVER changed:**
+
+1. **Game IDs (`idx`)** - Primary key used everywhere as reference
+   - Once assigned, never changes
+   - All indexes reference these IDs
+   - Formula: Continue from max existing game ID + 1
+
+2. **Game hashes** - Must remain stable for deduplication
+   - Same game from different sources = same hash
+   - Stored in chunks and deduplication index
+   - Prevents re-adding games on re-download
+
+3. **Chunk assignments** - Formula-based, no rebalancing
+   - `chunkId = Math.floor(gameId / 4000)`
+   - Once game 8000 is in chunk-2, it stays there
+   - Never rebalance to avoid breaking game ID → chunk mapping
+
+4. **Source provenance** - Audit trail
+   - `source`: "pgnmentor", "lichess", etc. (which site)
+   - `sourceFile`: Which specific file (e.g., "Carlsen.zip")
+   - Download timestamps in source tracking
+
+**Rebuildable data (can recalculate anytime):**
+- All query indexes (player, opening, ECO, date, event)
+- Opening analysis (ecoJsonFen, ecoJsonOpening)
+- Statistics in master-index.json
+- Ancestor-to-descendants navigation tree
+
+**Why this matters:**
+- Chunks are the source of truth - preserve indelible data there
+- Indexes are derived - can be rebuilt from chunks
+- Game IDs enable stable references across the system
+- Source provenance enables "where did game 12345 come from?"
+
+## GameIndex Usage Pattern
+
+**Efficient filtering without full parsing:**
+
+```typescript
+import { indexPgnGames } from "@chess-pgn/chess-pgn";
+import { shouldImportGame } from "./filterGame.js";
+
+// Index game boundaries (fast, extracts headers)
+const indices = indexPgnGames(pgnContent);
+
+for (const gameMetadata of indices) {
+  // gameMetadata has .headers, .startOffset, .endOffset
+  
+  // shouldImportGame() handles both IChessGame and metadata objects
+  if (!shouldImportGame(gameMetadata, { requireTitles: false })) {
+    continue;
+  }
+  
+  // Only extract moves section if game passes filters
+  const pgnChunk = pgnContent.slice(gameMetadata.startOffset, gameMetadata.endOffset);
+  // ... process accepted game
+}
+```
+
+**Key insight:** `indexPgnGames()` returns metadata with `.headers` property already parsed. No need to create full Game objects for filtering - just pass metadata directly to `shouldImportGame()`.
+
+**Benefits:**
+- ~16 games/sec parsing speed (manual SAN parsing)
+- Early rejection of filtered games (before full parse)
+- Simple, efficient code
+
+## Testing Structure
+
+**All tests in `test/` directory at project root:**
+
+- **`test/testChunkLogic.ts`** - Validates chunk management
+  - Chunk ID formula verification
+  - Existing chunk structure validation
+  - Simulates adding games to chunks
+  - Deduplication index integrity
+
+- **`test/testPipeline.ts`** - Pre-flight checks
+  - Script import validation
+  - Current database state
+  - Existing files inventory
+  - Source tracking status
+
+- **`test/testFiltering.js`** - Filter validation
+  - ELO requirements
+  - Time controls
+  - Title requirements (Lichess)
+  - Variant detection
+
+**Run all tests:**
+
+```bash
+npm run test:chunks    # Chunk logic validation
+npm run test:pipeline  # Pre-flight checks
+npm run test:filters   # Filter verification
+```
+
+**All tests are read-only** - they validate existing data without modifying anything.
 
 ## Testing and Validation
 
@@ -319,18 +480,18 @@ See `.github/docs/` directory for detailed design docs:
 **Next Phase:** Phase 2 (UI integration and query optimization)
 **Current Phase:** Phase 3 complete - Data now in Netlify Blobs
 
-## Planned Refactor: Incremental Updates
+## Incremental Update Implementation
 
-**Goal**: Refactor scripts to support incremental game additions without full rebuilds.
+**Status**: Partially implemented - downloadPgnmentor.ts demonstrates the pattern.
 
-### New Architecture
+**Architecture** - Site-specific scripts run independently:
 
-**Site-Specific Scripts** (run independently):
-- `downloadPgnmentor.ts` - Downloads from pgnmentor.com (5 masters)
-- `downloadLichess.ts` - Downloads Lichess Elite monthly archives
-- `downloadTWIC.ts` - Downloads The Week in Chess archives (TODO)
+- ✅ `downloadPgnmentor.ts` - Downloads from pgnmentor.com (250 player files)
+- ⏳ `downloadLichess.ts` - Downloads Lichess Elite monthly archives (TODO)
+- ⏳ `downloadTWIC.ts` - Downloads The Week in Chess archives (TODO)
 
 **Workflow Steps**:
+
 1. **Backup existing data** - Download all blobs to `backups/<date>/`
 2. **Download new games** - Site-specific script with throttling
 3. **Filter and deduplicate** - Check against existing game hashes
@@ -341,11 +502,13 @@ See `.github/docs/` directory for detailed design docs:
 ### Backup Strategy
 
 **Before any update:**
+
 ```bash
 npm run backup  # Downloads all Netlify Blobs to backups/<YYYY-MM-DD>/
 ```
 
 **Backup contents** (~26 MB):
+
 - 10 index files (opening-by-name, chunks, etc.)
 - Allows rollback if update fails
 - Timestamped for audit trail
@@ -355,6 +518,7 @@ npm run backup  # Downloads all Netlify Blobs to backups/<YYYY-MM-DD>/
 ### Incremental Game IDs
 
 **Strategy**: Continue from max existing game ID
+
 ```typescript
 // Load existing chunks from blobs
 const maxExistingId = getMaxGameIdFromChunks(existingChunks);
@@ -367,6 +531,7 @@ newGames.forEach((game, i) => {
 ```
 
 **Chunking**: Add new chunks as needed (chunk-5.json, chunk-6.json, etc.)
+
 - Keep chunks ~4000 games each
 - Don't rebalance existing chunks (avoids breaking game ID → chunk mapping)
 
@@ -375,6 +540,7 @@ newGames.forEach((game, i) => {
 **Formula**: `chunkId = Math.floor(gameId / 4000)`
 
 **Clean boundaries**:
+
 - Chunk 0: games 0-3999
 - Chunk 1: games 4000-7999
 - Chunk 2: games 8000-11999
@@ -383,6 +549,7 @@ newGames.forEach((game, i) => {
 - Chunk 5: games 20000+ (new)
 
 **Incremental update algorithm**:
+
 ```typescript
 // Given max existing game ID = 19000
 const maxExistingId = 19000;
@@ -395,7 +562,7 @@ newGames.forEach((game, i) => {
 });
 
 // Group new games by chunk
-const gamesByChunk = groupBy(newGames, 'chunkId');
+const gamesByChunk = groupBy(newGames, "chunkId");
 // Result: { 4: [150 games], 5: [50 games] }
 
 // Load only affected chunks from blobs
@@ -408,6 +575,7 @@ for (const [chunkId, games] of Object.entries(gamesByChunk)) {
 ```
 
 **Benefits**:
+
 - Formula maintains clean boundaries
 - Chunks naturally stay ~4000 games
 - No rebalancing needed
@@ -415,6 +583,7 @@ for (const [chunkId, games] of Object.entries(gamesByChunk)) {
 - Only update chunks that receive new games
 
 **Edge case handling**:
+
 - Chunk 4 has 3100 games → can accept 900 more before chunk 5
 - Add 200 games → all go in chunk 4 (still under 4000)
 - Add 1000 games → 900 in chunk 4, 100 in chunk 5
@@ -423,6 +592,7 @@ for (const [chunkId, games] of Object.entries(gamesByChunk)) {
 ### Source Tracking (Already Implemented)
 
 **Track downloaded files** in `source-tracking.json`:
+
 ```json
 {
   "pgnmentor": {
@@ -435,11 +605,14 @@ for (const [chunkId, games] of Object.entries(gamesByChunk)) {
       "gameCount": 3845
     }
   },
-  "lichess": { /* similar */ }
+  "lichess": {
+    /* similar */
+  }
 }
 ```
 
 **Update detection**:
+
 - Make HEAD request to check ETag/Last-Modified
 - Only download if changed
 - Update source-tracking.json after successful download
@@ -447,6 +620,7 @@ for (const [chunkId, games] of Object.entries(gamesByChunk)) {
 ### Throttling (Already Implemented)
 
 **Rate limits per site**:
+
 - pgnmentor.com: 1 request / 2 seconds (conservative)
 - Lichess: 2 requests / second (documented rate limit)
 - TWIC: 1 request / 2 seconds (TBD based on site)
@@ -460,19 +634,23 @@ Use HTTP Multipart Batched Request Format to check multiple URLs in a **single H
 // Reference: HTTP Multipart Batched Request Format spec
 async function checkMultipleUrls(urls: string[]): Promise<BatchResponse[]> {
   const boundary = `batch_${Date.now()}`;
-  const batchBody = urls.map((url, i) => 
-    `--${boundary}\r\n` +
-    `Content-Type: application/http\r\n` +
-    `Content-ID: ${i}\r\n\r\n` +
-    `HEAD ${url} HTTP/1.1\r\n\r\n`
-  ).join('') + `--${boundary}--`;
+  const batchBody =
+    urls
+      .map(
+        (url, i) =>
+          `--${boundary}\r\n` +
+          `Content-Type: application/http\r\n` +
+          `Content-ID: ${i}\r\n\r\n` +
+          `HEAD ${url} HTTP/1.1\r\n\r\n`,
+      )
+      .join("") + `--${boundary}--`;
 
-  const response = await fetch('/_batch', {
-    method: 'POST',
+  const response = await fetch("/_batch", {
+    method: "POST",
     headers: {
-      'Content-Type': `multipart/mixed; boundary=${boundary}`
+      "Content-Type": `multipart/mixed; boundary=${boundary}`,
     },
-    body: batchBody
+    body: batchBody,
   });
 
   // Parse multipart response containing all HEAD response data
@@ -481,22 +659,27 @@ async function checkMultipleUrls(urls: string[]): Promise<BatchResponse[]> {
 
 // Check ETags/Last-Modified from batch response
 const responses = await checkMultipleUrls(archiveUrls);
-const updatedFiles = responses.filter(r => hasChanged(r.etag, r.lastModified));
+const updatedFiles = responses.filter((r) =>
+  hasChanged(r.etag, r.lastModified),
+);
 ```
 
 **For actual downloads**:
+
 ```typescript
 async function downloadWithThrottle(urls: string[], options) {
   for (let i = 0; i < urls.length; i++) {
     await download(urls[i]);
-    
+
     // Processing time provides natural throttling (3-5 min per file)
     // Prompt checkpoints for monitoring/control
     if ((i + 1) % 5 === 0 || timeSinceStart > 30 * 60 * 1000) {
-      const answer = await promptUser(`Downloaded ${i + 1}/${urls.length} files. Continue? [Y/n]`);
-      if (answer === 'n') break;
+      const answer = await promptUser(
+        `Downloaded ${i + 1}/${urls.length} files. Continue? [Y/n]`,
+      );
+      if (answer === "n") break;
     }
-    
+
     // Only explicit delay if downloading many small files rapidly
     if (needsThrottling) {
       await sleep(2000);
@@ -510,12 +693,13 @@ async function downloadWithThrottle(urls: string[], options) {
 ### Deduplication
 
 **Strategy**: Load existing deduplication index from blobs first
+
 ```typescript
 // Load from backups/<date>/deduplication-index.json
 const existingHashes = await loadDeduplicationIndex();
 
 // Filter new games
-const newUniqueGames = newGames.filter(game => {
+const newUniqueGames = newGames.filter((game) => {
   const hash = hashGame(game);
   return !existingHashes[hash];
 });
@@ -525,16 +709,17 @@ const newUniqueGames = newGames.filter(game => {
 
 ### Filter: Games in Progress
 
-**Detection**: Result field = "*" indicates game not finished
+**Detection**: Result field = "\*" indicates game not finished
+
 ```typescript
 function filterGame(game: ParsedGame): boolean {
   // ... existing filters ...
-  
+
   // Exclude games in progress
-  if (game.headers.Result === '*') {
+  if (game.headers.Result === "*") {
     return false;
   }
-  
+
   return true;
 }
 ```
@@ -544,6 +729,7 @@ function filterGame(game: ParsedGame): boolean {
 ### Upload Script with Confirmation
 
 **Show diff before upload**:
+
 ```
 === Upload Summary ===
 New games: +150
@@ -551,7 +737,7 @@ Modified indexes:
   - opening-by-name.json (+25 entries)
   - chunk-5.json (new file, 150 games)
   - game-to-players.json (+150 entries)
-  
+
 Total changes: 3 files, 150 games added
 
 Continue with upload? [y/N]
@@ -561,26 +747,38 @@ Continue with upload? [y/N]
 
 ### Migration Tasks
 
+**Completed**:
+
+- [x] Create downloadPgnmentor.ts for pgnmentor.com (250 player files)
+- [x] Implement full pipeline: discover → download → parse → chunk
+- [x] Load existing chunks and find max game ID for incremental updates
+- [x] Hybrid index strategy: deduplication incremental, others batch
+- [x] Create test/ directory with chunk and pipeline tests
+- [x] Document indelible data principles
+- [x] Document GameIndex direct usage pattern
+
 **TODO**:
-- [ ] Refactor downloadMasterGames.ts → 3 site-specific scripts
+
 - [ ] Implement backup script (download all blobs)
-- [ ] Modify buildIndexes.ts for incremental mode
+- [ ] Implement batch HEAD requests (HTTP Multipart) in downloadPgnmentor.ts
 - [ ] Add diff/summary to upload script
 - [ ] Implement upload confirmation prompt
 - [ ] Add games-in-progress filter to filterGame.ts
+- [ ] Add downloadLichess.ts for Lichess Elite monthly archives
 - [ ] Add downloadTWIC.ts for The Week in Chess
 - [ ] Document TWIC filtering strategy
-- [ ] Test incremental flow end-to-end
+- [ ] Test full download flow with live pgnmentor.com
 - [ ] Update data pipeline diagram in README
 
 ## Common Pitfalls
 
 1. **Opening FEN confusion** - Always use `ecoJsonFen` from GameMetadata to query `opening-by-fen.json`, NOT the current position's FEN
 2. **Title requirements** - Lichess Elite requires BOTH players to have FIDE titles, not just one
-3. **Manual parsing** - Don't use `loadPgn()` for bulk processing; parse SAN manually for performance
-4. **Chunk size** - Keep chunks under 5 MB for Netlify Blobs
-5. **Source tracking** - Always update `source-tracking.json` when adding new data
-6. **Deduplication** - Run hash check before merging new games to avoid duplicates
+3. **GameIndex usage** - Use metadata objects directly with `shouldImportGame()`, don't create full Game objects for filtering
+4. **Chunk size** - Keep chunks under 5 MB for Netlify Blobs (4000 games per chunk)
+5. **Source tracking** - Always update tracking files when adding new data
+6. **Deduplication** - Update deduplication-index.json incrementally during download
+7. **Indelible data** - Never change game IDs, hashes, or chunk assignments
 
 ## Development Workflow
 
