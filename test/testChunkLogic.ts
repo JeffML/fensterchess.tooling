@@ -29,7 +29,9 @@ function testChunkIdFormula() {
   for (const { gameId, expectedChunk } of testCases) {
     const actualChunk = Math.floor(gameId / 4000);
     const status = actualChunk === expectedChunk ? "✅" : "❌";
-    console.log(`  ${status} gameId ${gameId} → chunk-${actualChunk} (expected: ${expectedChunk})`);
+    console.log(
+      `  ${status} gameId ${gameId} → chunk-${actualChunk} (expected: ${expectedChunk})`,
+    );
     if (actualChunk === expectedChunk) passed++;
   }
 
@@ -42,10 +44,12 @@ function testChunkIdFormula() {
  */
 function testExistingChunks() {
   console.log("\n📝 Test 2: Existing Chunks Structure");
-  
+
   const indexesDir = "./data/indexes";
   if (!fs.existsSync(indexesDir)) {
-    console.log("  ⚠️  No indexes directory found - this is expected for first run");
+    console.log(
+      "  ⚠️  No indexes directory found - this is expected for first run",
+    );
     return true;
   }
 
@@ -78,13 +82,17 @@ function testExistingChunks() {
     for (const game of chunk.games) {
       const calculatedChunk = Math.floor(game.idx / 4000);
       if (calculatedChunk !== expectedChunkId) {
-        console.log(`  ❌ chunk-${chunkId}: Game ${game.idx} should be in chunk-${calculatedChunk}`);
+        console.log(
+          `  ❌ chunk-${chunkId}: Game ${game.idx} should be in chunk-${calculatedChunk}`,
+        );
         allValid = false;
       }
     }
 
     const status = gameCount <= 4000 ? "✅" : "❌";
-    console.log(`  ${status} chunk-${chunkId}: ${gameCount} games (IDs ${minId}-${maxId})`);
+    console.log(
+      `  ${status} chunk-${chunkId}: ${gameCount} games (IDs ${minId}-${maxId})`,
+    );
 
     if (gameCount > 4000) {
       console.log(`     ❌ Exceeds 4000 game limit!`);
@@ -110,7 +118,7 @@ function testChunkAppend() {
 
   // Simulate existing state
   const lastChunk = { id: 4, games: [] as GameMetadata[] };
-  
+
   // Fill with 3900 games (100 slots free)
   for (let i = 15600; i < 19500; i++) {
     lastChunk.games.push({
@@ -120,32 +128,48 @@ function testChunkAppend() {
     } as GameMetadata);
   }
 
-  console.log(`  Current state: chunk-${lastChunk.id} has ${lastChunk.games.length} games`);
-  console.log(`  Max game ID: ${lastChunk.games[lastChunk.games.length - 1].idx}`);
+  console.log(
+    `  Current state: chunk-${lastChunk.id} has ${lastChunk.games.length} games`,
+  );
+  console.log(
+    `  Max game ID: ${lastChunk.games[lastChunk.games.length - 1].idx}`,
+  );
 
   // Test 3a: Add 50 games (should fit in current chunk)
   console.log("\n  Test 3a: Add 50 games (should fit)");
   let nextId = 19500;
   let newGames: GameMetadata[] = [];
   for (let i = 0; i < 50; i++) {
-    newGames.push({ idx: nextId++, white: "New1", black: "New2" } as GameMetadata);
+    newGames.push({
+      idx: nextId++,
+      white: "New1",
+      black: "New2",
+    } as GameMetadata);
   }
 
   const shouldCreateNewChunk = lastChunk.games.length + newGames.length > 4000;
-  console.log(`    Would create new chunk: ${shouldCreateNewChunk ? "YES ❌" : "NO ✅"}`);
+  console.log(
+    `    Would create new chunk: ${shouldCreateNewChunk ? "YES ❌" : "NO ✅"}`,
+  );
 
   // Test 3b: Add 200 games (should overflow to new chunk)
   console.log("\n  Test 3b: Add 200 games (should overflow)");
   nextId = 19500;
   newGames = [];
   for (let i = 0; i < 200; i++) {
-    newGames.push({ idx: nextId++, white: "New1", black: "New2" } as GameMetadata);
+    newGames.push({
+      idx: nextId++,
+      white: "New1",
+      black: "New2",
+    } as GameMetadata);
   }
 
   const remaining = 4000 - lastChunk.games.length; // 100
   const overflow = newGames.length - remaining; // 100
   console.log(`    Current chunk has ${remaining} slots free`);
-  console.log(`    ${remaining} games fit in chunk-4, ${overflow} would go to chunk-5 ✅`);
+  console.log(
+    `    ${remaining} games fit in chunk-4, ${overflow} would go to chunk-5 ✅`,
+  );
 
   return true;
 }
@@ -177,7 +201,7 @@ function testDeduplicationIndex() {
   let totalGames = 0;
   for (const chunkFile of chunkFiles) {
     const chunk: ChunkData = JSON.parse(
-      fs.readFileSync(path.join(indexesDir, chunkFile), "utf-8")
+      fs.readFileSync(path.join(indexesDir, chunkFile), "utf-8"),
     );
     totalGames += chunk.games.length;
   }
@@ -186,7 +210,9 @@ function testDeduplicationIndex() {
 
   const match = uniqueHashes === totalGames;
   const status = match ? "✅" : "⚠️";
-  console.log(`  ${status} Hashes ${match ? "match" : "don't match"} game count`);
+  console.log(
+    `  ${status} Hashes ${match ? "match" : "don't match"} game count`,
+  );
 
   return true;
 }

@@ -8,38 +8,40 @@ import path from "path";
 async function testPipeline() {
   console.log("🧪 Dry-Run Test: Full Pipeline");
   console.log("=".repeat(60));
-  
+
   const downloadDir = "./data/pgn-downloads";
-  
+
   // Check if we have any existing ZIP files
   if (!fs.existsSync(downloadDir)) {
     console.log("❌ No pgn-downloads directory found");
     return;
   }
 
-  const zipFiles = fs.readdirSync(downloadDir)
-    .filter(f => f.endsWith(".zip"));
+  const zipFiles = fs
+    .readdirSync(downloadDir)
+    .filter((f) => f.endsWith(".zip"));
 
   if (zipFiles.length === 0) {
     console.log("⚠️  No ZIP files found in pgn-downloads/");
     console.log("   This test requires at least one downloaded file.");
-    console.log("   Run 'npm run download' first or manually place a ZIP file.");
+    console.log(
+      "   Run 'npm run download' first or manually place a ZIP file.",
+    );
     return;
   }
 
   console.log(`\n📁 Found ${zipFiles.length} ZIP files:`);
-  zipFiles.forEach(f => console.log(`   - ${f}`));
+  zipFiles.forEach((f) => console.log(`   - ${f}`));
 
   // Test importing the actual download script
   console.log("\n🔍 Testing downloadPgnmentor script import...");
-  
+
   try {
     const module = await import("../scripts/downloadPgnmentor.ts");
     console.log("   ✅ Script imports successfully");
-    
+
     // Check exported functions are available (if any)
     console.log(`   Module exports: ${Object.keys(module).join(", ")}`);
-    
   } catch (error) {
     console.log(`   ❌ Import error: ${(error as Error).message}`);
   }
@@ -47,28 +49,29 @@ async function testPipeline() {
   // Check existing indexes
   console.log("\n📊 Current Database State:");
   const indexesDir = "./data/indexes";
-  
+
   if (fs.existsSync(indexesDir)) {
-    const chunkFiles = fs.readdirSync(indexesDir)
-      .filter(f => f.startsWith("chunk-") && f.endsWith(".json"));
-    
+    const chunkFiles = fs
+      .readdirSync(indexesDir)
+      .filter((f) => f.startsWith("chunk-") && f.endsWith(".json"));
+
     console.log(`   Chunks: ${chunkFiles.length}`);
-    
+
     if (chunkFiles.length > 0) {
       let totalGames = 0;
       let maxId = -1;
-      
+
       for (const chunkFile of chunkFiles) {
         const chunk = JSON.parse(
-          fs.readFileSync(path.join(indexesDir, chunkFile), "utf-8")
+          fs.readFileSync(path.join(indexesDir, chunkFile), "utf-8"),
         );
         totalGames += chunk.games.length;
-        
+
         for (const game of chunk.games) {
           if (game.idx > maxId) maxId = game.idx;
         }
       }
-      
+
       console.log(`   Total games: ${totalGames}`);
       console.log(`   Max game ID: ${maxId}`);
       console.log(`   Next game ID: ${maxId + 1}`);

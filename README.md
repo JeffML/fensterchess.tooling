@@ -40,11 +40,13 @@ Performance: ~16 games/sec manual SAN parsing (~20 minutes for 19K games)
 ## Data Sources
 
 ### pgnmentor.com (Players section)
+
 - Masters: Carlsen, Kasparov, Nakamura, Anand, Fischer
 - No title requirement
 - ~19,000 games currently
 
 ### Lichess Elite Database
+
 - Monthly downloads from https://database.lichess.org/elite/
 - Requires BOTH players to have FIDE titles
 - Expected: ~3K-5K games per month
@@ -52,12 +54,14 @@ Performance: ~16 games/sec manual SAN parsing (~20 minutes for 19K games)
 ## Filtering Criteria
 
 **Common filters (all sources):**
+
 - Standard chess only (no variants)
 - Both players ELO >2400
 - Rapid or slower time controls (≥600s base)
 - No FEN setups (standard starting position only)
 
 **Site-specific:**
+
 - pgnmentor: No title requirement
 - Lichess Elite: BOTH players must have FIDE titles (GM, IM, FM, etc.)
 
@@ -74,7 +78,7 @@ All indexes stored in `data/indexes/`:
 - **date-index.json** - Search by date range
 - **deduplication-index.json** - Hash → game index mapping
 - **source-tracking.json** - Source metadata and checksums
-- **chunk-*.json** - Game data split into 4000-game chunks (~4 MB each)
+- **chunk-\*.json** - Game data split into 4000-game chunks (~4 MB each)
 
 ## Key Concepts
 
@@ -91,6 +95,7 @@ Games are hashed deterministically (players + result + date + first 20 moves) to
 ## Environment Setup
 
 Create `.env` file:
+
 ```bash
 NETLIFY_BLOB_STORE_API_KEY=<your-key>
 ```
@@ -108,6 +113,7 @@ Get the API key from the Netlify project dashboard.
 ## Integration with fensterchess
 
 The fensterchess application queries this data via serverless functions:
+
 - `queryMasterGamesByFen` - Returns openings/masters for a position
 - `getMasterGameMoves` - Returns full PGN for a game
 
@@ -121,15 +127,18 @@ Runtime code stays in fensterchess; only build tooling lives here.
 ## Current Status
 
 **Phase 1:** Complete
+
 - Downloaded 5 masters from pgnmentor
 - Built indexes locally (~19K games, 5 chunks)
 - Tested filtering and deduplication
 
 **Phase 2:** In Progress
+
 - UI integration in fensterchess
 - Query optimization
 
 **Phase 3:** Planned
+
 - Upload to Netlify Blobs
 - Remove bundled JSON from fensterchess
 - Automated monthly Lichess Elite downloads

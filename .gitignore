@@ -1,6 +1,9 @@
 # Downloaded PGN files and processed data
 data/pgn-downloads/
 
+# Backups
+backups/
+
 # Logs
 logs
 *.log
