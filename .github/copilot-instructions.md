@@ -240,11 +240,12 @@ tsx scripts/downloadMasterGames.ts
 
 ```bash
 npm run download:pgnmentor
-# or  
+# or
 tsx scripts/downloadPgnmentor.ts
 ```
 
 This will:
+
 1. Discover all 250 player files from pgnmentor.com/files.html
 2. Compare with existing tracking data
 3. Download and process new/modified files only
@@ -310,6 +311,7 @@ npm run test:pipeline
   - Indexes may be stale during download (acceptable)
 
 **Rationale:**
+
 - Deduplication must work during download to prevent duplicate games
 - Query indexes (player, opening, ECO, etc.) can be rebuilt anytime
 - Simpler error handling - if download fails, just rebuild indexes
@@ -340,12 +342,14 @@ npm run test:pipeline
    - Download timestamps in source tracking
 
 **Rebuildable data (can recalculate anytime):**
+
 - All query indexes (player, opening, ECO, date, event)
 - Opening analysis (ecoJsonFen, ecoJsonOpening)
 - Statistics in master-index.json
 - Ancestor-to-descendants navigation tree
 
 **Why this matters:**
+
 - Chunks are the source of truth - preserve indelible data there
 - Indexes are derived - can be rebuilt from chunks
 - Game IDs enable stable references across the system
@@ -364,14 +368,17 @@ const indices = indexPgnGames(pgnContent);
 
 for (const gameMetadata of indices) {
   // gameMetadata has .headers, .startOffset, .endOffset
-  
+
   // shouldImportGame() handles both IChessGame and metadata objects
   if (!shouldImportGame(gameMetadata, { requireTitles: false })) {
     continue;
   }
-  
+
   // Only extract moves section if game passes filters
-  const pgnChunk = pgnContent.slice(gameMetadata.startOffset, gameMetadata.endOffset);
+  const pgnChunk = pgnContent.slice(
+    gameMetadata.startOffset,
+    gameMetadata.endOffset,
+  );
   // ... process accepted game
 }
 ```
@@ -379,6 +386,7 @@ for (const gameMetadata of indices) {
 **Key insight:** `indexPgnGames()` returns metadata with `.headers` property already parsed. No need to create full Game objects for filtering - just pass metadata directly to `shouldImportGame()`.
 
 **Benefits:**
+
 - ~16 games/sec parsing speed (manual SAN parsing)
 - Early rejection of filtered games (before full parse)
 - Simple, efficient code
@@ -591,80 +599,57 @@ for (const [chunkId, games] of Object.entries(gamesByChunk)) {
 
 ### Source Tracking (Already Implemented)
 
-**Track downloaded files** in `source-tracking.json`:
+**Two-level update detection strategy:**
+
+1. **Page-level check** (1 HEAD request):
+   - Check `/files.html` Last-Modified header
+   - Compare with `lastPageVisit` from tracking file
+   - If page unchanged → skip all processing (early exit)
+   - If page modified → proceed to file-level checks
+
+2. **File-level checks** (250 HEAD requests, only if page changed):
+   - Batch check all ZIP files using concurrent HEAD requests
+   - Compare each file's Last-Modified with `lastPageVisit` time
+   - Download only files modified after last page visit
+
+**Track state** in `pgnmentor-tracking.json`:
 
 ```json
 {
-  "pgnmentor": {
-    "Carlsen": {
+  "lastPageVisit": "2024-12-20T14:22:00Z",
+  "files": {
+    "Carlsen.zip": {
+      "filename": "Carlsen.zip",
       "url": "https://pgnmentor.com/players/Carlsen.zip",
-      "etag": "abc123...",
-      "lastModified": "2024-12-15T10:30:00Z",
-      "localFile": "data/pgn-downloads/Carlsen.zip",
       "downloadDate": "2024-12-20T14:22:00Z",
+      "lastModified": "2024-12-15T10:00:00Z",
+      "etag": "\"abc123...\"",
       "gameCount": 3845
     }
-  },
-  "lichess": {
-    /* similar */
   }
 }
 ```
 
-**Update detection**:
-
-- Make HEAD request to check ETag/Last-Modified
-- Only download if changed
-- Update source-tracking.json after successful download
+**Key insight**: File metadata is for audit/record-keeping. The decision to download is based purely on:
+- Page Last-Modified vs lastPageVisit (page changed?)
+- File Last-Modified vs lastPageVisit (file changed?)
 
 ### Throttling (Already Implemented)
 
 **Rate limits per site**:
 
-- pgnmentor.com: 1 request / 2 seconds (conservative)
+- pgnmentor.com: 1 request / 2 seconds between downloads (conservative)
 - Lichess: 2 requests / second (documented rate limit)
 - TWIC: 1 request / 2 seconds (TBD based on site)
 
-**For HEAD requests** (checking for updates):
+**HEAD request strategy**:
 
-Use HTTP Multipart Batched Request Format to check multiple URLs in a **single HTTP request**:
+- **Page check**: 1 HEAD request to `/files.html` (every run)
+- **File checks**: 250 concurrent HEAD requests (only if page changed)
+- Uses k6-style batch pattern: `Promise.all()` for all files at once
+- Most runs skip file checks entirely (page unchanged)
 
-```typescript
-// HTTP Batch request - multiple HEAD requests in one HTTP call
-// Reference: HTTP Multipart Batched Request Format spec
-async function checkMultipleUrls(urls: string[]): Promise<BatchResponse[]> {
-  const boundary = `batch_${Date.now()}`;
-  const batchBody =
-    urls
-      .map(
-        (url, i) =>
-          `--${boundary}\r\n` +
-          `Content-Type: application/http\r\n` +
-          `Content-ID: ${i}\r\n\r\n` +
-          `HEAD ${url} HTTP/1.1\r\n\r\n`,
-      )
-      .join("") + `--${boundary}--`;
-
-  const response = await fetch("/_batch", {
-    method: "POST",
-    headers: {
-      "Content-Type": `multipart/mixed; boundary=${boundary}`,
-    },
-    body: batchBody,
-  });
-
-  // Parse multipart response containing all HEAD response data
-  return parseMultipartResponse(await response.text());
-}
-
-// Check ETags/Last-Modified from batch response
-const responses = await checkMultipleUrls(archiveUrls);
-const updatedFiles = responses.filter((r) =>
-  hasChanged(r.etag, r.lastModified),
-);
-```
-
-**For actual downloads**:
+**For actual downloads** (after HEAD checks identify changed files):
 
 ```typescript
 async function downloadWithThrottle(urls: string[], options) {

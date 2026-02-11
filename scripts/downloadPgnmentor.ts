@@ -454,49 +454,63 @@ async function discoverPgnmentorFiles(): Promise<void> {
   }
 
   const visitDate = new Date().toISOString();
+  const lastVisitDate = sourceTracking.lastPageVisit;
+
+  // Step 0: Check if files page has been modified since last visit
+  console.log("🔍 Checking if files page has been modified...");
+  const pageResponse = await fetch(FILES_PAGE_URL, {
+    method: "HEAD",
+    headers: { "User-Agent": USER_AGENT },
+  });
+
+  const pageLastModified = pageResponse.headers.get("last-modified");
+  console.log(`  Page Last-Modified: ${pageLastModified || "unknown"}`);
+  
+  if (lastVisitDate && pageLastModified) {
+    const lastVisitTime = new Date(lastVisitDate).getTime();
+    const pageModifiedTime = new Date(pageLastModified).getTime();
+    
+    if (pageModifiedTime <= lastVisitTime) {
+      console.log(`  ✅ Page unchanged since last visit - nothing to do\n`);
+      return;
+    }
+    console.log(`  📝 Page has been updated since last visit - checking files...\n`);
+  } else {
+    console.log(`  ⚠️  No previous visit date - proceeding with full check...\n`);
+  }
 
   // Step 1: Discover available files
   const discoveredFiles = await discoverPlayerFiles();
 
-  // Step 2: Batch check HEAD metadata
+  // Step 2: Batch check HEAD metadata (only if page was modified)
   const fileMetadataMap = await batchCheckFileMetadata(discoveredFiles);
 
-  // Step 3: Classify files as new/modified/unchanged
-  const newFiles: string[] = [];
-  const modifiedFiles: Array<{
-    filename: string;
-    oldDate?: string;
-    newDate?: string;
-  }> = [];
+  // Step 3: Classify files as new/modified based on Last-Modified vs lastPageVisit
+  const filesToProcess: string[] = [];
   const unchangedFiles: string[] = [];
 
   for (const filename of discoveredFiles) {
-    const existing = sourceTracking.files[filename];
-
-    if (!existing) {
-      console.log(`  📥 New file: ${filename}`);
-      newFiles.push(filename);
+    const metadata = fileMetadataMap.get(filename);
+    
+    // If we have no previous visit or no Last-Modified header, include the file
+    if (!lastVisitDate || !metadata?.lastModified) {
+      console.log(`  📥 Will process: ${filename} (no date comparison)`);
+      filesToProcess.push(filename);
       continue;
     }
 
-    // Check if file was updated (if we have metadata from batch HEAD)
-    const metadata = fileMetadataMap.get(filename);
-    if (metadata?.lastModified && existing.lastModified) {
-      if (metadata.lastModified !== existing.lastModified) {
-        console.log(`  🔄 Modified: ${filename}`);
-        console.log(`     Previous: ${existing.lastModified}`);
-        console.log(`     Current:  ${metadata.lastModified}`);
-        modifiedFiles.push({
-          filename,
-          oldDate: existing.lastModified,
-          newDate: metadata.lastModified,
-        });
-        continue;
-      }
-    }
+    // Compare file's Last-Modified with our last page visit
+    const lastVisitTime = new Date(lastVisitDate).getTime();
+    const fileModifiedTime = new Date(metadata.lastModified).getTime();
 
-    // Already have this file and it hasn't changed
-    unchangedFiles.push(filename);
+    if (fileModifiedTime > lastVisitTime) {
+      console.log(`  📥 Will process: ${filename}`);
+      console.log(`     File modified: ${metadata.lastModified}`);
+      console.log(`     Last visit:    ${lastVisitDate}`);
+      filesToProcess.push(filename);
+    } else {
+      unchangedFiles.push(filename);
+    }
   }
 
   // Summary report
@@ -504,25 +518,14 @@ async function discoverPgnmentorFiles(): Promise<void> {
   console.log("📊 Discovery Summary");
   console.log("=".repeat(60));
   console.log(`Total files discovered: ${discoveredFiles.length}`);
-  console.log(`  ✨ New: ${newFiles.length}`);
-  console.log(`  🔄 Modified: ${modifiedFiles.length}`);
+  console.log(`  📥 To process: ${filesToProcess.length}`);
   console.log(`  ✅ Unchanged: ${unchangedFiles.length}`);
   console.log("=".repeat(60));
 
-  if (newFiles.length > 0) {
-    console.log("\n📥 New files:");
-    newFiles.forEach((f) => console.log(`   - ${f}`));
+  if (filesToProcess.length > 0) {
+    console.log("\n📥 Files to process:");
+    filesToProcess.forEach((f) => console.log(`   - ${f}`));
   }
-
-  if (modifiedFiles.length > 0) {
-    console.log("\n🔄 Modified files:");
-    modifiedFiles.forEach(({ filename, oldDate, newDate }) => {
-      console.log(`   - ${filename}`);
-      console.log(`     ${oldDate} → ${newDate}`);
-    });
-  }
-
-  const filesToProcess = [...newFiles, ...modifiedFiles.map((f) => f.filename)];
 
   if (filesToProcess.length === 0) {
     console.log("\n✅ All files up to date - nothing to download\n");
