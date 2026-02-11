@@ -528,7 +528,12 @@ async function discoverPgnmentorFiles(): Promise<void> {
   }
 
   if (filesToProcess.length === 0) {
-    console.log("\n✅ All files up to date - nothing to download\n");
+    console.log("\n✅ All files up to date - nothing to download");
+    
+    // Update lastPageVisit to record that we checked
+    sourceTracking.lastPageVisit = visitDate;
+    fs.writeFileSync(sourceTrackingPath, JSON.stringify(sourceTracking, null, 2));
+    console.log(`✅ Updated lastPageVisit to ${visitDate}\n`);
     return;
   }
 
