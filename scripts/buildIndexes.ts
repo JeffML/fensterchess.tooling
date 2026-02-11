@@ -314,6 +314,21 @@ function buildDateIndex(games: GameMetadata[]): DateIndex {
   return index;
 }
 
+function buildGameToPlayersIndex(games: GameMetadata[]): [string, string][] {
+  console.log("\n🎮 Building Game-to-Players index...");
+
+  // Create array where index = gameId
+  const maxGameId = Math.max(...games.map((g) => g.idx));
+  const index: [string, string][] = new Array(maxGameId + 1);
+
+  for (const game of games) {
+    index[game.idx] = [game.white || "Unknown", game.black || "Unknown"];
+  }
+
+  console.log(`  ✅ Indexed ${games.length} games (max ID: ${maxGameId})`);
+  return index;
+}
+
 async function buildIndexes(): Promise<void> {
   console.log("🔨 Phase 1: Building search indexes\n");
 
@@ -344,6 +359,7 @@ async function buildIndexes(): Promise<void> {
   const playerIndex = buildPlayerIndex(data.games);
   const eventIndex = buildEventIndex(data.games);
   const dateIndex = buildDateIndex(data.games);
+  const gameToPlayers = buildGameToPlayersIndex(data.games);
   const sourceTracking = data.sourceTracking; // Read from processed data
 
   // Save indexes
@@ -369,6 +385,7 @@ async function buildIndexes(): Promise<void> {
     { name: "player-index.json", data: playerIndex },
     { name: "event-index.json", data: eventIndex },
     { name: "date-index.json", data: dateIndex },
+    { name: "game-to-players.json", data: gameToPlayers },
     { name: "deduplication-index.json", data: data.deduplicationIndex },
     { name: "source-tracking.json", data: sourceTracking },
   ];
