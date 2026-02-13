@@ -538,8 +538,18 @@ async function discoverPgnmentorFiles(): Promise<void> {
     return;
   }
 
+  // Apply file limit if MAX_FILES env var is set (for testing)
+  const MAX_FILES = parseInt(process.env.MAX_FILES || "0");
+  const limitedFiles = MAX_FILES > 0 && filesToProcess.length > MAX_FILES
+    ? filesToProcess.slice(0, MAX_FILES)
+    : filesToProcess;
+
+  if (limitedFiles.length < filesToProcess.length) {
+    console.log(`\n⚠️  MAX_FILES limit: Processing only ${limitedFiles.length} of ${filesToProcess.length} files`);
+  }
+
   console.log(
-    `\n🚀 Starting download and processing of ${filesToProcess.length} files...\n`,
+    `\n🚀 Starting download and processing of ${limitedFiles.length} files...\n`,
   );
 
   // Load existing chunks and deduplication index
@@ -559,12 +569,12 @@ async function discoverPgnmentorFiles(): Promise<void> {
   const allNewGames: GameMetadata[] = [];
 
   // Process each file
-  for (let i = 0; i < filesToProcess.length; i++) {
-    const filename = filesToProcess[i];
+  for (let i = 0; i < limitedFiles.length; i++) {
+    const filename = limitedFiles[i];
     const fileNum = i + 1;
 
     console.log(
-      `\n[${fileNum}/${filesToProcess.length}] Processing ${filename}...`,
+      `\n[${fileNum}/${limitedFiles.length}] Processing ${filename}...`,
     );
 
     try {
@@ -619,7 +629,7 @@ async function discoverPgnmentorFiles(): Promise<void> {
       );
 
       // Periodic saves and prompts
-      if (fileNum % 5 === 0 || fileNum === filesToProcess.length) {
+      if (fileNum % 5 === 0 || fileNum === limitedFiles.length) {
         console.log(`\n💾 Saving progress after ${fileNum} files...`);
         saveGamesToChunks(allNewGames, indexesDir, lastChunk);
         allNewGames.length = 0; // Clear saved games
@@ -645,7 +655,7 @@ async function discoverPgnmentorFiles(): Promise<void> {
       }
 
       // Throttle
-      if (i < filesToProcess.length - 1) {
+      if (i < limitedFiles.length - 1) {
         console.log(`  ⏳ Throttling ${THROTTLE_MS}ms...`);
         await new Promise((resolve) => setTimeout(resolve, THROTTLE_MS));
       }
@@ -674,7 +684,7 @@ async function discoverPgnmentorFiles(): Promise<void> {
   console.log("\n" + "=".repeat(60));
   console.log("📊 Processing Complete");
   console.log("=".repeat(60));
-  console.log(`Files processed: ${filesToProcess.length}`);
+  console.log(`Files processed: ${limitedFiles.length}`);
   console.log(`Total games: ${totalStats.total}`);
   console.log(`Accepted: ${totalStats.accepted}`);
   console.log(`Rejected: ${totalStats.rejected}`);
