@@ -332,10 +332,44 @@ function buildGameToPlayersIndex(games: GameMetadata[]): [string, string][] {
 async function buildIndexes(): Promise<void> {
   console.log("🔨 Phase 1: Building search indexes\n");
 
-  // Read processed games
-  console.log(`📖 Reading: ${INPUT_FILE}`);
-  const data: ProcessedData = JSON.parse(fs.readFileSync(INPUT_FILE, "utf-8"));
-  console.log(`  Found ${data.games.length} games\n`);
+  // Check for existing chunks first (preferred), otherwise fall back to processed-games.json
+  let data: ProcessedData;
+  const chunkFiles = fs.existsSync(OUTPUT_DIR)
+    ? fs.readdirSync(OUTPUT_DIR).filter((f) => f.startsWith("chunk-") && f.endsWith(".json")).sort()
+    : [];
+
+  if (chunkFiles.length > 0) {
+    // Load from existing chunks
+    console.log(`📦 Loading from ${chunkFiles.length} existing chunks...`);
+    let allGames: GameMetadata[] = [];
+   
+    for (const chunkFile of chunkFiles) {
+      const chunkPath = path.join(OUTPUT_DIR, chunkFile);
+      const chunk: GameIndexChunk = JSON.parse(fs.readFileSync(chunkPath, "utf-8"));
+      allGames = allGames.concat(chunk.games);
+    }
+    
+    console.log(`  Found ${allGames.length} games\n`);
+    
+    // Load deduplication index and source tracking if they exist
+    const dedupPath = path.join(OUTPUT_DIR, "deduplication-index.json");
+    const sourcePath = path.join(OUTPUT_DIR, "source-tracking.json");
+    
+    data = {
+      games: allGames,
+      deduplicationIndex: fs.existsSync(dedupPath)
+        ? JSON.parse(fs.readFileSync(dedupPath, "utf-8"))
+        : {},
+      sourceTracking: fs.existsSync(sourcePath)
+        ? JSON.parse(fs.readFileSync(sourcePath, "utf-8"))
+        : { pgnmentor: { lastPageVisit: new Date().toISOString(), files: {} } },
+    };
+  } else {
+    // Fall back to processed-games.json (legacy)
+    console.log(`📖 Reading: ${INPUT_FILE}`);
+    data = JSON.parse(fs.readFileSync(INPUT_FILE, "utf-8"));
+    console.log(`  Found ${data.games.length} games\n`);
+  }
 
   // Load eco.json opening book
   console.log("📚 Loading eco.json opening book...");
