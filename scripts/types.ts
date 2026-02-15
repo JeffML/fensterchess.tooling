@@ -53,13 +53,26 @@ export interface GameMetadata {
  * Chunked game index
  * Each chunk contains 200K games (~85MB)
  */
+/**
+ * Game chunk structure - supports both simple and full metadata formats
+ * 
+ * Simple format (downloadPgnmentor.ts): { games: [] }
+ *   - Written during incremental downloads
+ *   - Only chunks with game changes are uploaded
+ * 
+ * Full format (buildIndexes.ts): { version, chunkId, totalChunks, startIdx, endIdx, games }
+ *   - Written during batch rebuild
+ *   - Adds navigation metadata for clients
+ * 
+ * This design avoids re-uploading all chunks when totalChunks changes.
+ */
 export interface GameIndexChunk {
-  version: string;
-  chunkId: number;
-  totalChunks: number;
-  startIdx: number;
-  endIdx: number;
-  games: GameMetadata[];
+  version?: string;
+  chunkId?: number;
+  totalChunks?: number;
+  startIdx?: number;
+  endIdx?: number;
+  games: GameMetadata[];  // Only required field
 }
 
 /**
