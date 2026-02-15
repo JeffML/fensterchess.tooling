@@ -89,6 +89,7 @@ async function enrichGamesWithEcoJson(
 
   let matched = 0;
   let unmatched = 0;
+  let skipped = 0;
   const progressInterval = 1000;
 
   for (let i = 0; i < games.length; i++) {
@@ -96,6 +97,17 @@ async function enrichGamesWithEcoJson(
 
     if ((i + 1) % progressInterval === 0) {
       process.stdout.write(`\r  Processing: ${i + 1}/${games.length} games...`);
+    }
+
+    // OPTIMIZATION: Skip games that are already enriched
+    if (game.ecoJsonFen) {
+      skipped++;
+      continue;
+    }
+
+    // Debug: Check first unenriched game
+    if (skipped === 0 && matched === 0 && unmatched === 0) {
+      console.log(`\n  First unenriched game: idx=${game.idx}, has ecoJsonFen=${!!game.ecoJsonFen}`);
     }
 
     try {
@@ -167,10 +179,11 @@ async function enrichGamesWithEcoJson(
   process.stdout.write(
     `\r  Processing: ${games.length}/${games.length} games complete!\n`
   );
+  console.log(`  ⏭️  Skipped: ${skipped} games (already enriched)`);
   console.log(
-    `  ✅ Matched: ${matched} games (${((matched / games.length) * 100).toFixed(
+    `  ✅ Matched: ${matched} games (${((matched / (games.length - skipped)) * 100).toFixed(
       1
-    )}%)`
+    )}% of unenriched)`
   );
   console.log(`  ⚠️  Unmatched: ${unmatched} games`);
 }
