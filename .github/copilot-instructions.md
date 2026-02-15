@@ -34,7 +34,8 @@ Download → Filter → Hash/Dedupe → Build Indexes → Chunk → Upload to Ne
 - **`buildIndexes.ts`** - Generates all search indexes from chunks
   - Enriches games with opening data from eco.json
   - Optimization: Skips games that already have `ecoJsonFen` field (73% faster on re-runs)
-  - Writes full chunk format with navigation metadata
+  - Copies existing chunks from backup (avoids rewriting unchanged data)
+  - Writes full chunk format without totalChunks (stored in master-index.json)
 - **`backupFromBlobs.ts`** - Downloads all indexes from Netlify Blobs to timestamped backup folder
 - **`uploadToBlobs.js`** - Uploads indexes to Netlify Blobs with diff and confirmation
 - **`filterGame.ts`** - Site-specific quality filters
@@ -138,10 +139,14 @@ All indexes stored in `data/indexes/`:
   - **Simple format** (downloadPgnmentor.ts): `{ games: GameMetadata[] }`
     - Written during incremental downloads
     - Only chunks with game changes are uploaded
-  - **Full format** (buildIndexes.ts): `{ version, chunkId, totalChunks, startIdx, endIdx, games }`
+  - **Full format** (buildIndexes.ts): `{ version, chunkId, startIdx, endIdx, games }`
     - Written during batch rebuild
-    - Adds navigation metadata for clients
-  - **Design rationale:** Avoids re-uploading all chunks when totalChunks changes
+    - Navigation metadata for clients
+    - **totalChunks NOT included** - stored in master-index.json only
+  - **Design rationale:** 
+    - Avoids re-uploading all chunks when totalChunks changes
+    - buildIndexes copies existing chunks from backup
+    - Only new/modified chunks are written and uploaded
 
 ## GameMetadata Structure
 
@@ -310,7 +315,9 @@ tsx scripts/buildIndexes.ts
 
 **Performance optimization:** buildIndexes skips games that already have `ecoJsonFen` field, avoiding redundant eco.json lookups. This provides ~73% speedup on re-runs. First run always enriches all games.
 
-**Chunk format:** Writes full metadata format with `version`, `chunkId`, `totalChunks`, `startIdx`, `endIdx` fields for client navigation.
+**Chunk optimization:** Copies existing chunks from latest backup instead of rewriting them. Only new/modified chunks are written. This prevents cascade updates when totalChunks changes.
+
+**Chunk format:** Writes full metadata format with `version`, `chunkId`, `startIdx`, `endIdx` fields. totalChunks is stored in master-index.json only (not in individual chunks).
 
 ### Backup from Netlify Blobs
 
@@ -365,8 +372,10 @@ npm run workflow
 **Steps:**
 1. Download games (runs downloadPgnmentor.ts)
 2. Build indexes (runs buildIndexes.ts)
-3. Backup from production (runs backupFromBlobs.ts)
+3. **Backup from production (MANDATORY)** - downloads existing chunks for copying
 4. Preview and upload (runs uploadToBlobs.js)
+
+**Why backup is mandatory:** buildIndexes copies existing chunks from backup to avoid rewriting unchanged data. Without a backup, all chunks would be rewritten even if only game IDs changed.
 
 ### Test Filters
 
@@ -876,11 +885,12 @@ Continue with upload? [y/N]
 3. **GameIndex usage** - Use metadata objects directly with `shouldImportGame()`, don't create full Game objects for filtering
 4. **Chunk size** - Keep chunks under 5 MB for Netlify Blobs (4000 games per chunk)
 5. **Chunk format** - downloadPgnmentor writes simple format, buildIndexes writes full format - both are valid, interface has optional fields
-6. **Source tracking** - Always update tracking files when adding new data
-7. **Deduplication** - Update deduplication-index.json incrementally during download
-8. **Indelible data** - Never change game IDs, hashes, or chunk assignments
-9. **Netlify Blobs authentication** - Local scripts MUST use explicit credentials `getStore({ name, siteID, token })`. Simple `getStore(name)` only works when deployed on Netlify. Both `NETLIFY_AUTH_TOKEN` and `SITE_ID` required in `.env`
-10. **Repository data files** - All `data/indexes/*.json` files are gitignored. Data lives in Netlify Blobs only. Local data is for development/testing.
+6. **Backup before build** - ALWAYS run backup before buildIndexes. buildIndexes copies existing chunks from backup to avoid rewriting unchanged data. Without backup, all chunks get rewritten.
+7. **Source tracking** - Always update tracking files when adding new data
+8. **Deduplication** - Update deduplication-index.json incrementally during download
+9. **Indelible data** - Never change game IDs, hashes, or chunk assignments
+10. **Netlify Blobs authentication** - Local scripts MUST use explicit credentials `getStore({ name, siteID, token })`. Simple `getStore(name)` only works when deployed on Netlify. Both `NETLIFY_AUTH_TOKEN` and `SITE_ID` required in `.env`
+11. **Repository data files** - All `data/indexes/*.json` files are gitignored. Data lives in Netlify Blobs only. Local data is for development/testing.
 
 ## Development Workflow
 
