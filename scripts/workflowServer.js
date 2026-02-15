@@ -243,7 +243,7 @@ app.post("/api/upload", async (req, res) => {
       if (code === 0) {
         res.write(`data: ${JSON.stringify({ type: "done", success: true })}\n\n`);
       } else {
-        res.write(`data: ${JSON.stringify({ type: "error", error: \`Process exited with code \${code}\` })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: "error", error: "Process exited with code " + code })}\n\n`);
       }
       res.end();
     });
