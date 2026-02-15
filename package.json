@@ -9,6 +9,7 @@
     "build-indexes": "tsx scripts/buildIndexes.ts",
     "backup": "tsx --env-file=.env scripts/backupFromBlobs.ts",
     "upload": "node --env-file=.env scripts/uploadToBlobs.js",
+    "workflow": "node scripts/workflowServer.js",
     "test:connection": "node --env-file=.env scripts/testBlobConnection.js",
     "test:filters": "node test/testFiltering.js",
     "test:chunks": "tsx test/testChunkLogic.ts",
@@ -33,6 +34,7 @@
     "@chess-pgn/chess-pgn": "^1.0.0",
     "@netlify/blobs": "^8.1.0",
     "adm-zip": "^0.5.16",
+    "express": "^4.18.2",
     "tsx": "^4.19.2"
   },
   "devDependencies": {

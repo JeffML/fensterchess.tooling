@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fensterchess Tooling - Data Pipeline Workflow</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .output-log {
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      line-height: 1.4;
+      max-height: 400px;
+      overflow-y: auto;
+      background: #1e1e1e;
+      color: #d4d4d4;
+    }
+    .output-log .stdout { color: #d4d4d4; }
+    .output-log .stderr { color: #f48771; }
+    .output-log .success { color: #89d185; }
+    .output-log .error { color: #f14c4c; }
+    .step-card.completed { border-color: #10b981; }
+    .step-card.running { border-color: #3b82f6; animation: pulse 2s ease-in-out infinite; }
+    .step-card.error { border-color: #ef4444; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div class="container mx-auto px-4 py-8 max-w-6xl">
+    <!-- Header -->
+    <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+      <h1 class="text-3xl font-bold text-gray-800 mb-2">🎮 Fensterchess Data Pipeline</h1>
+      <p class="text-gray-600">Step-by-step workflow for managing master games database</p>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+      <h2 class="text-lg font-semibold text-blue-800 mb-2">📊 Current Status</h2>
+      <div id="status-grid" class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+        <div>
+          <span class="text-gray-600">Chunks:</span>
+          <span id="status-chunks" class="font-bold ml-2">-</span>
+        </div>
+        <div>
+          <span class="text-gray-600">Indexes:</span>
+          <span id="status-indexes" class="font-bold ml-2">-</span>
+        </div>
+        <div>
+          <span class="text-gray-600">Dedup Index:</span>
+          <span id="status-dedup" class="font-bold ml-2">-</span>
+        </div>
+        <div>
+          <span class="text-gray-600">Latest Backup:</span>
+          <span id="status-backup" class="font-bold ml-2 text-xs">-</span>
+        </div>
+      </div>
+      <button onclick="loadStatus()" class="mt-3 px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600">
+        🔄 Refresh
+      </button>
+    </div>
+
+    <!-- Workflow Steps -->
+    <div class="space-y-6">
+      
+      <!-- Step 1: Download -->
+      <div id="step1-card" class="step-card bg-white rounded-lg shadow-md border-2 border-gray-200 p-6">
+        <div class="flex items-start justify-between mb-4">
+          <div>
+            <h3 class="text-xl font-bold text-gray-800">Step 1: Download New Games</h3>
+            <p class="text-gray-600 text-sm mt-1">
+              Downloads modified files from pgnmentor.com using two-level detection
+            </p>
+          </div>
+          <span id="step1-status" class="text-2xl">⏸️</span>
+        </div>
+        
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-2">
+            Max Files (leave empty for all):
+          </label>
+          <input 
+            type="number" 
+            id="max-files-input" 
+            class="border border-gray-300 rounded px-3 py-2 w-32 text-sm"
+            placeholder="All files"
+            min="1"
+          />
+          <span class="text-xs text-gray-500 ml-2">Use 2-3 for testing</span>
+        </div>
+
+        <button 
+          id="step1-btn"
+          onclick="runStep1()" 
+          class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 font-medium">
+          ▶️ Run Download
+        </button>
+        
+        <div id="step1-output" class="output-log hidden mt-4 p-4 rounded"></div>
+      </div>
+
+      <!-- Step 2: Build Indexes -->
+      <div id="step2-card" class="step-card bg-white rounded-lg shadow-md border-2 border-gray-200 p-6 opacity-50">
+        <div class="flex items-start justify-between mb-4">
+          <div>
+            <h3 class="text-xl font-bold text-gray-800">Step 2: Build Search Indexes</h3>
+            <p class="text-gray-600 text-sm mt-1">
+              Rebuilds all search indexes from chunks with opening enrichment
+            </p>
+          </div>
+          <span id="step2-status" class="text-2xl">⏸️</span>
+        </div>
+
+        <button 
+          id="step2-btn"
+          onclick="runStep2()" 
+          disabled
+          class="px-4 py-2 bg-green-500 text-white rounded font-medium disabled:bg-gray-300 disabled:cursor-not-allowed">
+          ▶️ Build Indexes
+        </button>
+        
+        <div id="step2-output" class="output-log hidden mt-4 p-4 rounded"></div>
+      </div>
+
+      <!-- Step 3: Backup -->
+      <div id="step3-card" class="step-card bg-white rounded-lg shadow-md border-2 border-gray-200 p-6 opacity-50">
+        <div class="flex items-start justify-between mb-4">
+          <div>
+            <h3 class="text-xl font-bold text-gray-800">Step 3: Backup from Netlify Blobs</h3>
+            <p class="text-gray-600 text-sm mt-1">
+              Downloads current production data to timestamped backup folder (safety)
+            </p>
+          </div>
+          <span id="step3-status" class="text-2xl">⏸️</span>
+        </div>
+
+        <button 
+          id="step3-btn"
+          onclick="runStep3()" 
+          disabled
+          class="px-4 py-2 bg-green-500 text-white rounded font-medium disabled:bg-gray-300 disabled:cursor-not-allowed">
+          ▶️ Run Backup
+        </button>
+        
+        <div id="step3-output" class="output-log hidden mt-4 p-4 rounded"></div>
+      </div>
+
+      <!-- Step 4: Upload -->
+      <div id="step4-card" class="step-card bg-white rounded-lg shadow-md border-2 border-gray-200 p-6 opacity-50">
+        <div class="flex items-start justify-between mb-4">
+          <div>
+            <h3 class="text-xl font-bold text-gray-800">Step 4: Upload to Production</h3>
+            <p class="text-gray-600 text-sm mt-1">
+              ⚠️ Uploads changes to Netlify Blobs (affects live data!)
+            </p>
+          </div>
+          <span id="step4-status" class="text-2xl">⏸️</span>
+        </div>
+
+        <div class="flex gap-2">
+          <button 
+            id="step4-preview-btn"
+            onclick="runStep4Preview()" 
+            disabled
+            class="px-4 py-2 bg-blue-500 text-white rounded font-medium disabled:bg-gray-300 disabled:cursor-not-allowed">
+            👁️ Preview Changes
+          </button>
+          
+          <button 
+            id="step4-upload-btn"
+            onclick="runStep4Upload()" 
+            disabled
+            class="px-4 py-2 bg-red-500 text-white rounded font-medium disabled:bg-gray-300 disabled:cursor-not-allowed">
+            🚀 Upload to Production
+          </button>
+        </div>
+        
+        <div id="step4-output" class="output-log hidden mt-4 p-4 rounded"></div>
+      </div>
+
+    </div>
+
+    <!-- Footer -->
+    <div class="mt-8 text-center text-gray-500 text-sm">
+      <p>Fensterchess Tooling v0.1.0</p>
+      <p class="mt-1">⚠️ Always backup before uploading to production</p>
+    </div>
+  </div>
+
+  <script>
+    let stepCompleted = {
+      step1: false,
+      step2: false,
+      step3: false,
+      step4: false
+    };
+
+    // Load status on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      loadStatus();
+    });
+
+    async function loadStatus() {
+      try {
+        const res = await fetch('/api/status');
+        const status = await res.json();
+        
+        document.getElementById('status-chunks').textContent = status.chunks;
+        document.getElementById('status-indexes').textContent = status.indexes;
+        document.getElementById('status-dedup').textContent = status.hasDedup ? '✓' : '✗';
+        document.getElementById('status-backup').textContent = status.latestBackup || 'None';
+      } catch (error) {
+        console.error('Failed to load status:', error);
+      }
+    }
+
+    function setStepStatus(step, status) {
+      const card = document.getElementById(`step${step}-card`);
+      const statusIcon = document.getElementById(`step${step}-status`);
+      
+      card.classList.remove('completed', 'running', 'error');
+      
+      if (status === 'running') {
+        card.classList.add('running');
+        statusIcon.textContent = '⏳';
+      } else if (status === 'success') {
+        card.classList.add('completed');
+        statusIcon.textContent = '✅';
+        stepCompleted[`step${step}`] = true;
+        enableNextStep(step);
+      } else if (status === 'error') {
+        card.classList.add('error');
+        statusIcon.textContent = '❌';
+      }
+    }
+
+    function enableNextStep(currentStep) {
+      const nextStep = currentStep + 1;
+      if (nextStep <= 4) {
+        const nextCard = document.getElementById(`step${nextStep}-card`);
+        const nextBtn = document.getElementById(`step${nextStep}-btn`);
+        const nextPreviewBtn = document.getElementById(`step${nextStep}-preview-btn`);
+        
+        nextCard.classList.remove('opacity-50');
+        if (nextBtn) nextBtn.disabled = false;
+        if (nextPreviewBtn) nextPreviewBtn.disabled = false;
+      }
+    }
+
+    function appendOutput(step, text, type = 'stdout') {
+      const output = document.getElementById(`step${step}-output`);
+      output.classList.remove('hidden');
+      
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = text;
+      output.appendChild(line);
+      output.scrollTop = output.scrollHeight;
+    }
+
+    async function runStep1() {
+      const btn = document.getElementById('step1-btn');
+      const output = document.getElementById('step1-output');
+      const maxFiles = document.getElementById('max-files-input').value;
+      
+      btn.disabled = true;
+      output.innerHTML = '';
+      setStepStatus(1, 'running');
+
+      try {
+        const body = maxFiles ? { maxFiles: parseInt(maxFiles) } : {};
+        const res = await fetch('/api/download', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n').filter(l => l.trim().startsWith('data:'));
+          
+          for (const line of lines) {
+            const data = JSON.parse(line.substring(5));
+            if (data.type === 'done') {
+              setStepStatus(1, 'success');
+              appendOutput(1, '✅ Download complete!', 'success');
+              loadStatus();
+            } else if (data.type === 'error') {
+              setStepStatus(1, 'error');
+              appendOutput(1, `❌ Error: ${data.error}`, 'error');
+            } else {
+              appendOutput(1, data.output, data.type);
+            }
+          }
+        }
+      } catch (error) {
+        setStepStatus(1, 'error');
+        appendOutput(1, `❌ Error: ${error.message}`, 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function runStep2() {
+      const btn = document.getElementById('step2-btn');
+      const output = document.getElementById('step2-output');
+      
+      btn.disabled = true;
+      output.innerHTML = '';
+      setStepStatus(2, 'running');
+
+      try {
+        const res = await fetch('/api/build-indexes', { method: 'POST' });
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n').filter(l => l.trim().startsWith('data:'));
+          
+          for (const line of lines) {
+            const data = JSON.parse(line.substring(5));
+            if (data.type === 'done') {
+              setStepStatus(2, 'success');
+              appendOutput(2, '✅ Indexes built successfully!', 'success');
+              loadStatus();
+            } else if (data.type === 'error') {
+              setStepStatus(2, 'error');
+              appendOutput(2, `❌ Error: ${data.error}`, 'error');
+            } else {
+              appendOutput(2, data.output, data.type);
+            }
+          }
+        }
+      } catch (error) {
+        setStepStatus(2, 'error');
+        appendOutput(2, `❌ Error: ${error.message}`, 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function runStep3() {
+      const btn = document.getElementById('step3-btn');
+      const output = document.getElementById('step3-output');
+      
+      btn.disabled = true;
+      output.innerHTML = '';
+      setStepStatus(3, 'running');
+
+      try {
+        const res = await fetch('/api/backup', { method: 'POST' });
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n').filter(l => l.trim().startsWith('data:'));
+          
+          for (const line of lines) {
+            const data = JSON.parse(line.substring(5));
+            if (data.type === 'done') {
+              setStepStatus(3, 'success');
+              appendOutput(3, '✅ Backup complete!', 'success');
+              loadStatus();
+            } else if (data.type === 'error') {
+              setStepStatus(3, 'error');
+              appendOutput(3, `❌ Error: ${data.error}`, 'error');
+            } else {
+              appendOutput(3, data.output, data.type);
+            }
+          }
+        }
+      } catch (error) {
+        setStepStatus(3, 'error');
+        appendOutput(3, `❌ Error: ${error.message}`, 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function runStep4Preview() {
+      const btn = document.getElementById('step4-preview-btn');
+      const output = document.getElementById('step4-output');
+      
+      btn.disabled = true;
+      output.innerHTML = '';
+      appendOutput(4, '👁️ Fetching diff preview...\n', 'stdout');
+
+      try {
+        const res = await fetch('/api/upload-preview', { method: 'POST' });
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n').filter(l => l.trim().startsWith('data:'));
+          
+          for (const line of lines) {
+            const data = JSON.parse(line.substring(5));
+            if (data.type === 'done') {
+              appendOutput(4, '\n✅ Preview complete. Review changes above.', 'success');
+              document.getElementById('step4-upload-btn').disabled = false;
+            } else if (data.type === 'error') {
+              appendOutput(4, `❌ Error: ${data.error}`, 'error');
+            } else {
+              appendOutput(4, data.output, data.type);
+            }
+          }
+        }
+      } catch (error) {
+        appendOutput(4, `❌ Error: ${error.message}`, 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function runStep4Upload() {
+      if (!confirm('⚠️ This will upload changes to PRODUCTION. Are you sure?')) {
+        return;
+      }
+
+      const btn = document.getElementById('step4-upload-btn');
+      const output = document.getElementById('step4-output');
+      
+      btn.disabled = true;
+      output.innerHTML = '';
+      setStepStatus(4, 'running');
+
+      try {
+        const res = await fetch('/api/upload', { method: 'POST' });
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n').filter(l => l.trim().startsWith('data:'));
+          
+          for (const line of lines) {
+            const data = JSON.parse(line.substring(5));
+            if (data.type === 'done') {
+              setStepStatus(4, 'success');
+              appendOutput(4, '🎉 Upload to production complete!', 'success');
+              loadStatus();
+            } else if (data.type === 'error') {
+              setStepStatus(4, 'error');
+              appendOutput(4, `❌ Error: ${data.error}`, 'error');
+            } else {
+              appendOutput(4, data.output, data.type);
+            }
+          }
+        }
+      } catch (error) {
+        setStepStatus(4, 'error');
+        appendOutput(4, `❌ Error: ${error.message}`, 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
