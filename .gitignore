@@ -1,6 +1,9 @@
 # Downloaded PGN files and processed data
 data/pgn-downloads/
 
+# Generated indexes - all sourced from Netlify Blobs
+data/indexes/*.json
+
 # Backups
 backups/
 
