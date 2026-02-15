@@ -60,16 +60,16 @@ export interface GameMetadata {
  *   - Written during incremental downloads
  *   - Only chunks with game changes are uploaded
  * 
- * Full format (buildIndexes.ts): { version, chunkId, totalChunks, startIdx, endIdx, games }
+ * Full format (buildIndexes.ts): { version, chunkId, startIdx, endIdx, games }
  *   - Written during batch rebuild
  *   - Adds navigation metadata for clients
+ *   - totalChunks stored in master-index.json only (not in individual chunks)
  * 
  * This design avoids re-uploading all chunks when totalChunks changes.
  */
 export interface GameIndexChunk {
   version?: string;
   chunkId?: number;
-  totalChunks?: number;
   startIdx?: number;
   endIdx?: number;
   games: GameMetadata[];  // Only required field

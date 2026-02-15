@@ -52,7 +52,7 @@ function buildGameChunks(games: GameMetadata[]): {
     const chunk: GameIndexChunk = {
       version: "1.0",
       chunkId: i,
-      totalChunks,
+      // totalChunks removed - stored in master-index.json instead
       startIdx,
       endIdx,
       games: chunkGames,
@@ -420,11 +420,61 @@ async function buildIndexes(): Promise<void> {
   // Save indexes
   console.log("\n💾 Saving indexes...");
 
-  // Game chunks
+  // Game chunks - copy existing from backup, only write new/modified
+  const backupsDir = "./backups";
+  let latestBackup: string | null = null;
+
+  // Find latest backup
+  if (fs.existsSync(backupsDir)) {
+    const backups = fs
+      .readdirSync(backupsDir)
+      .filter((d) => fs.statSync(path.join(backupsDir, d)).isDirectory())
+      .sort()
+      .reverse();
+    if (backups.length > 0) {
+      latestBackup = path.join(backupsDir, backups[0], "indexes");
+      console.log(`  📦 Using backup: ${backups[0]}`);
+    }
+  }
+
   for (const chunk of chunks) {
     const chunkPath = path.join(OUTPUT_DIR, `chunk-${chunk.chunkId}.json`);
+    const backupChunkPath = latestBackup
+      ? path.join(latestBackup, `chunk-${chunk.chunkId}.json`)
+      : null;
+
+    // Check if we can copy from backup (chunk exists and hasn't changed)
+    if (
+      backupChunkPath &&
+      fs.existsSync(backupChunkPath) &&
+      fs.existsSync(chunkPath)
+    ) {
+      // Load both to compare game IDs
+      const backupChunk = JSON.parse(
+        fs.readFileSync(backupChunkPath, "utf-8"),
+      );
+      const currentChunk = JSON.parse(fs.readFileSync(chunkPath, "utf-8"));
+
+      // If game IDs match, copy from backup (already enriched)
+      const backupGameIds = backupChunk.games.map((g: GameMetadata) => g.idx);
+      const currentGameIds = currentChunk.games.map((g: GameMetadata) => g.idx);
+
+      if (
+        backupGameIds.length === currentGameIds.length &&
+        backupGameIds.every(
+          (id: number, i: number) => id === currentGameIds[i],
+        )
+      ) {
+        // Copy from backup (already enriched and in correct format)
+        fs.copyFileSync(backupChunkPath, chunkPath);
+        console.log(`  📋 Copied chunk-${chunk.chunkId}.json from backup`);
+        continue;
+      }
+    }
+
+    // New or modified chunk - write it
     fs.writeFileSync(chunkPath, JSON.stringify(chunk, null, 2));
-    console.log(`  ✅ ${chunkPath}`);
+    console.log(`  ✅ chunk-${chunk.chunkId}.json`);
   }
 
   // Master index
