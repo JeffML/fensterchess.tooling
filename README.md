@@ -168,6 +168,7 @@ npm test
 ```
 
 **What to verify:**
+
 - Master games appear in opening position searches
 - Player search returns correct games
 - Opening name filtering works
@@ -253,28 +254,34 @@ NETLIFY_BLOB_STORE_API_KEY=<your-key>
 Get the API key from the Netlify project dashboard.
 
 **Environment Variables:**
+
 - `NETLIFY_BLOB_STORE_API_KEY` - Required for backup and upload operations
 - `MAX_FILES` - Optional, limits number of files processed by downloadPgnmentor.ts (useful for testing)
 
 ## Scripts
 
 **Download:**
+
 - **`downloadPgnmentor.ts`** - Site-specific downloader for pgnmentor.com (250 player files)
 - **`downloadMasterGames.ts`** - Legacy downloader (to be deprecated)
 
 **Build:**
+
 - **`buildIndexes.ts`** - Generate all search indexes from chunks
 
 **Deploy:**
+
 - **`backupFromBlobs.ts`** - Download all indexes to timestamped backup folder
 - **`uploadToBlobs.js`** - Upload indexes to Netlify Blobs with diff and confirmation
 
 **Utilities:**
+
 - **`filterGame.ts`** - Site-specific quality filtering logic
 - **`hashGame.ts`** - Deterministic game hashing for deduplication
 - **`types.ts`** - TypeScript interfaces (GameMetadata, indexes, etc.)
 
 **Testing:**
+
 - **`testFiltering.js`** - Validate filter logic
 - **`testChunkLogic.ts`** - Validate chunk management
 - **`testPipeline.ts`** - Pre-flight checks

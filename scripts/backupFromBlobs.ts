@@ -97,9 +97,7 @@ async function backupFromBlobs() {
   console.log("=".repeat(60));
 
   if (downloads.length < blobs.length) {
-    console.log(
-      "\n⚠️  Some files failed to download - check errors above",
-    );
+    console.log("\n⚠️  Some files failed to download - check errors above");
     process.exit(1);
   }
 

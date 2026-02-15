@@ -60,7 +60,7 @@ function buildGameChunks(games: GameMetadata[]): {
 
     chunks.push(chunk);
     console.log(
-      `  Chunk ${i}: ${chunkGames.length} games (idx ${startIdx}-${endIdx - 1})`
+      `  Chunk ${i}: ${chunkGames.length} games (idx ${startIdx}-${endIdx - 1})`,
     );
   }
 
@@ -83,7 +83,7 @@ function buildGameChunks(games: GameMetadata[]): {
 async function enrichGamesWithEcoJson(
   games: GameMetadata[],
   openings: any,
-  positionBook: any
+  positionBook: any,
 ): Promise<void> {
   console.log("\n🎯 Enriching games with eco.json opening matches...");
 
@@ -107,7 +107,9 @@ async function enrichGamesWithEcoJson(
 
     // Debug: Check first unenriched game
     if (skipped === 0 && matched === 0 && unmatched === 0) {
-      console.log(`\n  First unenriched game: idx=${game.idx}, has ecoJsonFen=${!!game.ecoJsonFen}`);
+      console.log(
+        `\n  First unenriched game: idx=${game.idx}, has ecoJsonFen=${!!game.ecoJsonFen}`,
+      );
     }
 
     try {
@@ -177,13 +179,14 @@ async function enrichGamesWithEcoJson(
   }
 
   process.stdout.write(
-    `\r  Processing: ${games.length}/${games.length} games complete!\n`
+    `\r  Processing: ${games.length}/${games.length} games complete!\n`,
   );
   console.log(`  ⏭️  Skipped: ${skipped} games (already enriched)`);
   console.log(
-    `  ✅ Matched: ${matched} games (${((matched / (games.length - skipped)) * 100).toFixed(
-      1
-    )}% of unenriched)`
+    `  ✅ Matched: ${matched} games (${(
+      (matched / (games.length - skipped)) *
+      100
+    ).toFixed(1)}% of unenriched)`,
   );
   console.log(`  ⚠️  Unmatched: ${unmatched} games`);
 }
@@ -203,7 +206,7 @@ function buildOpeningByFenIndex(games: GameMetadata[]): OpeningByFenIndex {
   }
 
   console.log(
-    `  ✅ Indexed ${Object.keys(index).length} unique eco.json positions`
+    `  ✅ Indexed ${Object.keys(index).length} unique eco.json positions`,
   );
   return index;
 }
@@ -232,7 +235,7 @@ function buildOpeningByNameIndex(games: GameMetadata[]): OpeningByNameIndex {
   }
 
   console.log(
-    `  ✅ Indexed ${Object.keys(index).length} unique eco.json opening names`
+    `  ✅ Indexed ${Object.keys(index).length} unique eco.json opening names`,
   );
   return index;
 }
@@ -348,26 +351,31 @@ async function buildIndexes(): Promise<void> {
   // Check for existing chunks first (preferred), otherwise fall back to processed-games.json
   let data: ProcessedData;
   const chunkFiles = fs.existsSync(OUTPUT_DIR)
-    ? fs.readdirSync(OUTPUT_DIR).filter((f) => f.startsWith("chunk-") && f.endsWith(".json")).sort()
+    ? fs
+        .readdirSync(OUTPUT_DIR)
+        .filter((f) => f.startsWith("chunk-") && f.endsWith(".json"))
+        .sort()
     : [];
 
   if (chunkFiles.length > 0) {
     // Load from existing chunks
     console.log(`📦 Loading from ${chunkFiles.length} existing chunks...`);
     let allGames: GameMetadata[] = [];
-   
+
     for (const chunkFile of chunkFiles) {
       const chunkPath = path.join(OUTPUT_DIR, chunkFile);
-      const chunk: GameIndexChunk = JSON.parse(fs.readFileSync(chunkPath, "utf-8"));
+      const chunk: GameIndexChunk = JSON.parse(
+        fs.readFileSync(chunkPath, "utf-8"),
+      );
       allGames = allGames.concat(chunk.games);
     }
-    
+
     console.log(`  Found ${allGames.length} games\n`);
-    
+
     // Load deduplication index and source tracking if they exist
     const dedupPath = path.join(OUTPUT_DIR, "deduplication-index.json");
     const sourcePath = path.join(OUTPUT_DIR, "source-tracking.json");
-    
+
     data = {
       games: allGames,
       deduplicationIndex: fs.existsSync(dedupPath)
@@ -449,7 +457,7 @@ async function buildIndexes(): Promise<void> {
     const indexPath = path.join(OUTPUT_DIR, index.name);
     const size = fs.statSync(indexPath).size;
     console.log(
-      `  ${index.name.padEnd(30)} ${(size / 1024).toFixed(2).padStart(10)} KB`
+      `  ${index.name.padEnd(30)} ${(size / 1024).toFixed(2).padStart(10)} KB`,
     );
     return sum + size;
   }, 0);
@@ -462,17 +470,17 @@ async function buildIndexes(): Promise<void> {
   console.log(
     `  ${"Total indexes:".padEnd(30)} ${(totalSize / 1024)
       .toFixed(2)
-      .padStart(10)} KB`
+      .padStart(10)} KB`,
   );
   console.log(
     `  ${"Total chunks:".padEnd(30)} ${(chunkSize / 1024)
       .toFixed(2)
-      .padStart(10)} KB`
+      .padStart(10)} KB`,
   );
   console.log(
     `  ${"Grand total:".padEnd(30)} ${((totalSize + chunkSize) / 1024)
       .toFixed(2)
-      .padStart(10)} KB`
+      .padStart(10)} KB`,
   );
 
   console.log("\n✅ Index building complete!");

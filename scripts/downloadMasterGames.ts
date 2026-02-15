@@ -7,10 +7,7 @@ import AdmZip from "adm-zip";
 import { shouldImportGame } from "./filterGame.js";
 import { hashGame } from "./hashGame.js";
 import { indexPgnGames } from "@chess-pgn/chess-pgn";
-import type {
-  GameMetadata,
-  DeduplicationIndex,
-} from "./types.js";
+import type { GameMetadata, DeduplicationIndex } from "./types.js";
 
 const DOWNLOAD_DIR = "./data/pgn-downloads";
 const THROTTLE_MS = 10000; // 10 seconds between downloads

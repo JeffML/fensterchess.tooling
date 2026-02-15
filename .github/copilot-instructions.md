@@ -228,6 +228,7 @@ await store.set("indexes/chunk-5.json", JSON.stringify(chunkData));
 - ✅ Backup and upload scripts functional
 
 **Current production state:**
+
 - Chunks 0-4: ~19,000 games (original 5 masters)
 - Total size: ~25 MB in Netlify Blobs
 - Backup location: `backups/<timestamp>/indexes/` (gitignored, local only)
@@ -294,6 +295,7 @@ npm run backup
 ```
 
 **What it does:**
+
 - Connects to Netlify Blobs using explicit credentials from .env
 - Lists all blobs with "indexes/" prefix
 - Downloads each blob to timestamped local folder
@@ -308,6 +310,7 @@ npm run upload
 ```
 
 **What it does:**
+
 - Compares local files with remote blobs (content diff)
 - Shows summary: 🆕 New files, ✏️ Modified files (with size diff), ✓ Unchanged
 - Prompts: "Continue with upload? [y/N]:"

@@ -95,7 +95,9 @@ async function uploadToBlobs() {
       // File exists - compare content to detect modifications
       const localContent = fs.readFileSync(filepath, "utf-8");
       const remoteContent = await store.get(blobKey, { type: "text" });
-      const remoteSize = remoteContent ? Buffer.byteLength(remoteContent, "utf-8") : 0;
+      const remoteSize = remoteContent
+        ? Buffer.byteLength(remoteContent, "utf-8")
+        : 0;
 
       totalRemoteSize += remoteSize;
 
@@ -116,7 +118,10 @@ async function uploadToBlobs() {
   }
 
   // Calculate size for new files
-  totalRemoteSize += newFiles.reduce((sum, f) => sum + (existingBlobsMap.get(f.key)?.size || 0), 0);
+  totalRemoteSize += newFiles.reduce(
+    (sum, f) => sum + (existingBlobsMap.get(f.key)?.size || 0),
+    0,
+  );
 
   // Show diff summary
   console.log("=".repeat(60));
@@ -154,8 +159,12 @@ async function uploadToBlobs() {
 
   console.log("\n" + "-".repeat(60));
   console.log(`Total files:       ${files.length}`);
-  console.log(`Local size:        ${(totalLocalSize / 1024 / 1024).toFixed(2)} MB`);
-  console.log(`Changes:           ${newFiles.length} new, ${modifiedFiles.length} modified, ${unchangedFiles.length} unchanged`);
+  console.log(
+    `Local size:        ${(totalLocalSize / 1024 / 1024).toFixed(2)} MB`,
+  );
+  console.log(
+    `Changes:           ${newFiles.length} new, ${modifiedFiles.length} modified, ${unchangedFiles.length} unchanged`,
+  );
   console.log("=".repeat(60));
 
   // If nothing to upload, exit
@@ -166,9 +175,7 @@ async function uploadToBlobs() {
 
   // Prompt for confirmation
   console.log();
-  const confirmed = await promptConfirmation(
-    "Continue with upload? [y/N]: ",
-  );
+  const confirmed = await promptConfirmation("Continue with upload? [y/N]: ");
 
   if (!confirmed) {
     console.log("\n❌ Upload cancelled by user.");
@@ -193,10 +200,17 @@ async function uploadToBlobs() {
     try {
       const content = fs.readFileSync(filepath, "utf-8");
       await store.set(fileInfo.key, content);
-      uploads.push({ filename: fileInfo.filename, size: stats.size, key: fileInfo.key });
+      uploads.push({
+        filename: fileInfo.filename,
+        size: stats.size,
+        key: fileInfo.key,
+      });
       console.log(`   ✅ Uploaded\n`);
     } catch (error) {
-      console.error(`   ❌ Failed to upload ${fileInfo.filename}:`, error.message);
+      console.error(
+        `   ❌ Failed to upload ${fileInfo.filename}:`,
+        error.message,
+      );
       process.exit(1);
     }
   }

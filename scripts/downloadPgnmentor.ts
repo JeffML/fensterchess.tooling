@@ -438,16 +438,25 @@ async function discoverPgnmentorFiles(): Promise<void> {
   }
 
   // Load existing source tracking
-  const sourceTrackingPath = path.join(DOWNLOAD_DIR, "..", "indexes", "source-tracking.json");
+  const sourceTrackingPath = path.join(
+    DOWNLOAD_DIR,
+    "..",
+    "indexes",
+    "source-tracking.json",
+  );
   let allSourceTracking: SourceTracking = {};
-  
+
   if (fs.existsSync(sourceTrackingPath)) {
-    allSourceTracking = JSON.parse(fs.readFileSync(sourceTrackingPath, "utf-8"));
+    allSourceTracking = JSON.parse(
+      fs.readFileSync(sourceTrackingPath, "utf-8"),
+    );
   }
-  
+
   // Get pgnmentor-specific tracking
-  let sourceTracking: SiteSourceTracking = allSourceTracking.pgnmentor || { files: {} };
-  
+  let sourceTracking: SiteSourceTracking = allSourceTracking.pgnmentor || {
+    files: {},
+  };
+
   console.log("📂 Loading pgnmentor source tracking...");
   console.log(
     `  ✅ Last page visit: ${sourceTracking.lastPageVisit || "never"}\n`,
@@ -465,18 +474,22 @@ async function discoverPgnmentorFiles(): Promise<void> {
 
   const pageLastModified = pageResponse.headers.get("last-modified");
   console.log(`  Page Last-Modified: ${pageLastModified || "unknown"}`);
-  
+
   if (lastVisitDate && pageLastModified) {
     const lastVisitTime = new Date(lastVisitDate).getTime();
     const pageModifiedTime = new Date(pageLastModified).getTime();
-    
+
     if (pageModifiedTime <= lastVisitTime) {
       console.log(`  ✅ Page unchanged since last visit - nothing to do\n`);
       return;
     }
-    console.log(`  📝 Page has been updated since last visit - checking files...\n`);
+    console.log(
+      `  📝 Page has been updated since last visit - checking files...\n`,
+    );
   } else {
-    console.log(`  ⚠️  No previous visit date - proceeding with full check...\n`);
+    console.log(
+      `  ⚠️  No previous visit date - proceeding with full check...\n`,
+    );
   }
 
   // Step 1: Discover available files
@@ -491,7 +504,7 @@ async function discoverPgnmentorFiles(): Promise<void> {
 
   for (const filename of discoveredFiles) {
     const metadata = fileMetadataMap.get(filename);
-    
+
     // If we have no previous visit or no Last-Modified header, include the file
     if (!lastVisitDate || !metadata?.lastModified) {
       console.log(`  📥 Will process: ${filename} (no date comparison)`);
@@ -529,23 +542,29 @@ async function discoverPgnmentorFiles(): Promise<void> {
 
   if (filesToProcess.length === 0) {
     console.log("\n✅ All files up to date - nothing to download");
-    
+
     // Update lastPageVisit to record that we checked
     sourceTracking.lastPageVisit = visitDate;
     allSourceTracking.pgnmentor = sourceTracking;
-    fs.writeFileSync(sourceTrackingPath, JSON.stringify(allSourceTracking, null, 2));
+    fs.writeFileSync(
+      sourceTrackingPath,
+      JSON.stringify(allSourceTracking, null, 2),
+    );
     console.log(`✅ Updated lastPageVisit to ${visitDate}\n`);
     return;
   }
 
   // Apply file limit if MAX_FILES env var is set (for testing)
   const MAX_FILES = parseInt(process.env.MAX_FILES || "0");
-  const limitedFiles = MAX_FILES > 0 && filesToProcess.length > MAX_FILES
-    ? filesToProcess.slice(0, MAX_FILES)
-    : filesToProcess;
+  const limitedFiles =
+    MAX_FILES > 0 && filesToProcess.length > MAX_FILES
+      ? filesToProcess.slice(0, MAX_FILES)
+      : filesToProcess;
 
   if (limitedFiles.length < filesToProcess.length) {
-    console.log(`\n⚠️  MAX_FILES limit: Processing only ${limitedFiles.length} of ${filesToProcess.length} files`);
+    console.log(
+      `\n⚠️  MAX_FILES limit: Processing only ${limitedFiles.length} of ${filesToProcess.length} files`,
+    );
   }
 
   console.log(
@@ -678,7 +697,10 @@ async function discoverPgnmentorFiles(): Promise<void> {
   // Final source tracking update
   sourceTracking.lastPageVisit = visitDate;
   allSourceTracking.pgnmentor = sourceTracking;
-  fs.writeFileSync(sourceTrackingPath, JSON.stringify(allSourceTracking, null, 2));
+  fs.writeFileSync(
+    sourceTrackingPath,
+    JSON.stringify(allSourceTracking, null, 2),
+  );
 
   // Final summary
   console.log("\n" + "=".repeat(60));
