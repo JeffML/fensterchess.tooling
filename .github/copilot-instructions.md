@@ -28,13 +28,24 @@ Download → Filter → Hash/Dedupe → Build Indexes → Chunk → Upload to Ne
   - Incremental updates: loads existing chunks, continues from max game ID
   - Updates deduplication index during download
   - Periodic saves every 5 files with progress checkpoints
+  - Writes simple chunk format: `{ games: [] }` for upload efficiency
+  - MAX_FILES env var: Limits processing for testing (e.g., `MAX_FILES=3 npm run download:pgnmentor`)
 - **`downloadMasterGames.ts`** - Legacy downloader (to be deprecated)
 - **`buildIndexes.ts`** - Generates all search indexes from chunks
+  - Enriches games with opening data from eco.json
+  - Optimization: Skips games that already have `ecoJsonFen` field (73% faster on re-runs)
+  - Writes full chunk format with navigation metadata
 - **`backupFromBlobs.ts`** - Downloads all indexes from Netlify Blobs to timestamped backup folder
 - **`uploadToBlobs.js`** - Uploads indexes to Netlify Blobs with diff and confirmation
 - **`filterGame.ts`** - Site-specific quality filters
 - **`hashGame.ts`** - Deterministic game hashing for deduplication
 - **`types.ts`** - TypeScript interfaces for GameMetadata, indexes, etc.
+- **`workflowServer.js`** - Express server for web-based workflow UI
+  - SSE streaming for real-time command output
+  - 4-step workflow: download → build indexes → backup → upload
+  - Sequential validation (can't skip steps)
+  - Auto-answers upload confirmation prompt
+  - Run via `npm run workflow`, access at http://localhost:3030
 
 **Script Execution Notes:**
 
@@ -123,7 +134,14 @@ All indexes stored in `data/indexes/`:
 - **`chunk-*.json`** - Game data split into chunks
 - **Size:** 4000 games per chunk (~4-5 MB)
 - **Why:** Netlify Blobs has size limits; chunking enables efficient partial loading
-- **Format:** `{ games: GameMetadata[] }`
+- **Format:** Supports both simple and full metadata formats
+  - **Simple format** (downloadPgnmentor.ts): `{ games: GameMetadata[] }`
+    - Written during incremental downloads
+    - Only chunks with game changes are uploaded
+  - **Full format** (buildIndexes.ts): `{ version, chunkId, totalChunks, startIdx, endIdx, games }`
+    - Written during batch rebuild
+    - Adds navigation metadata for clients
+  - **Design rationale:** Avoids re-uploading all chunks when totalChunks changes
 
 ## GameMetadata Structure
 
@@ -266,6 +284,9 @@ tsx scripts/downloadMasterGames.ts
 npm run download:pgnmentor
 # or
 tsx scripts/downloadPgnmentor.ts
+
+# For testing with limited files:
+MAX_FILES=3 npm run download:pgnmentor
 ```
 
 This will:
@@ -273,9 +294,11 @@ This will:
 1. Discover all 250 player files from pgnmentor.com/files.html
 2. Compare with existing tracking data
 3. Download and process new/modified files only
-4. Update chunks incrementally
+4. Update chunks incrementally (simple format)
 5. Update deduplication index
 6. Save progress every 5 files
+
+**MAX_FILES parameter:** Set environment variable to limit processing (useful for testing pipeline without downloading all files)
 
 ### Build Indexes
 
@@ -284,6 +307,10 @@ npm run build-indexes
 # or
 tsx scripts/buildIndexes.ts
 ```
+
+**Performance optimization:** buildIndexes skips games that already have `ecoJsonFen` field, avoiding redundant eco.json lookups. This provides ~73% speedup on re-runs. First run always enriches all games.
+
+**Chunk format:** Writes full metadata format with `version`, `chunkId`, `totalChunks`, `startIdx`, `endIdx` fields for client navigation.
 
 ### Backup from Netlify Blobs
 
@@ -316,6 +343,30 @@ npm run upload
 - Prompts: "Continue with upload? [y/N]:"
 - Only uploads new and modified files
 - Skips upload if nothing changed
+
+**Upload efficiency:** Simple chunk format means only chunks with game changes are uploaded. Full metadata chunks from buildIndexes avoid cascading updates when totalChunks changes.
+
+### Workflow UI (Web-based)
+
+```bash
+npm run workflow
+# Opens Express server on http://localhost:3030
+```
+
+**Features:**
+
+- Real-time command output via SSE
+- 4-step workflow with status dashboard
+- Sequential validation (can't skip steps)
+- Preview changes before upload
+- Auto-answers confirmation prompts
+- Color-coded terminal output
+
+**Steps:**
+1. Download games (runs downloadPgnmentor.ts)
+2. Build indexes (runs buildIndexes.ts)
+3. Backup from production (runs backupFromBlobs.ts)
+4. Preview and upload (runs uploadToBlobs.js)
 
 ### Test Filters
 
@@ -824,10 +875,12 @@ Continue with upload? [y/N]
 2. **Title requirements** - Lichess Elite requires BOTH players to have FIDE titles, not just one
 3. **GameIndex usage** - Use metadata objects directly with `shouldImportGame()`, don't create full Game objects for filtering
 4. **Chunk size** - Keep chunks under 5 MB for Netlify Blobs (4000 games per chunk)
-5. **Source tracking** - Always update tracking files when adding new data
-6. **Deduplication** - Update deduplication-index.json incrementally during download
-7. **Indelible data** - Never change game IDs, hashes, or chunk assignments
-8. **Netlify Blobs authentication** - Local scripts MUST use explicit credentials `getStore({ name, siteID, token })`. Simple `getStore(name)` only works when deployed on Netlify. Both `NETLIFY_AUTH_TOKEN` and `SITE_ID` required in `.env`
+5. **Chunk format** - downloadPgnmentor writes simple format, buildIndexes writes full format - both are valid, interface has optional fields
+6. **Source tracking** - Always update tracking files when adding new data
+7. **Deduplication** - Update deduplication-index.json incrementally during download
+8. **Indelible data** - Never change game IDs, hashes, or chunk assignments
+9. **Netlify Blobs authentication** - Local scripts MUST use explicit credentials `getStore({ name, siteID, token })`. Simple `getStore(name)` only works when deployed on Netlify. Both `NETLIFY_AUTH_TOKEN` and `SITE_ID` required in `.env`
+10. **Repository data files** - All `data/indexes/*.json` files are gitignored. Data lives in Netlify Blobs only. Local data is for development/testing.
 
 ## Development Workflow
 
