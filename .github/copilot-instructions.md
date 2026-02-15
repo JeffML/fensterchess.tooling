@@ -30,9 +30,17 @@ Download → Filter → Hash/Dedupe → Build Indexes → Chunk → Upload to Ne
   - Periodic saves every 5 files with progress checkpoints
 - **`downloadMasterGames.ts`** - Legacy downloader (to be deprecated)
 - **`buildIndexes.ts`** - Generates all search indexes from chunks
+- **`backupFromBlobs.ts`** - Downloads all indexes from Netlify Blobs to timestamped backup folder
+- **`uploadToBlobs.js`** - Uploads indexes to Netlify Blobs with diff and confirmation
 - **`filterGame.ts`** - Site-specific quality filters
 - **`hashGame.ts`** - Deterministic game hashing for deduplication
 - **`types.ts`** - TypeScript interfaces for GameMetadata, indexes, etc.
+
+**Script Execution Notes:**
+
+- Scripts that access Netlify Blobs (backup/upload) require `--env-file=.env` flag
+- Example: `tsx --env-file=.env scripts/backupFromBlobs.ts`
+- Package.json scripts handle this automatically via `npm run backup` or `npm run upload`
 
 ## Data Sources
 
@@ -155,59 +163,74 @@ When a user is at a position that has NO named opening (e.g., 1.b3 d6), to find 
 
 ### Setup
 
-**Environment Variable:**
+**Environment Variables (.env file):**
 
 ```bash
-NETLIFY_BLOB_STORE_API_KEY=<your-key>
+NETLIFY_AUTH_TOKEN=<your-token>
+SITE_ID=<your-site-id>
 ```
 
-Set in Netlify project dashboard or `.env` file locally.
+**CRITICAL - Authentication Pattern:**
+
+- **When deployed on Netlify**: `getStore("master-games")` works automatically (Netlify provides credentials)
+- **When running locally**: Must use explicit credentials: `getStore({ name: "master-games", siteID, token })`
+- Both `NETLIFY_AUTH_TOKEN` and `SITE_ID` are required for local scripts (backup/upload)
+- Get credentials from Netlify project dashboard → Settings → General → Site details
 
 ### Blob Structure
 
-**Store name:** `master-games` (or similar - document actual name here)
+**Store name:** `master-games`
 
-**Blobs:**
+**Blobs (current production):**
 
 ```
-/indexes/master-index.json
-/indexes/player-index.json
-/indexes/opening-by-fen.json
-/indexes/opening-by-eco.json
-/indexes/opening-by-name.json
-/indexes/event-index.json
-/indexes/date-index.json
-/indexes/deduplication-index.json
-/indexes/source-tracking.json
-/chunks/chunk-0.json
-/chunks/chunk-1.json
-/chunks/chunk-2.json
-/chunks/chunk-3.json
-/chunks/chunk-4.json
+indexes/ancestor-to-descendants.json
+indexes/chunk-0.json
+indexes/chunk-1.json
+indexes/chunk-2.json
+indexes/chunk-3.json
+indexes/chunk-4.json
+indexes/eco-roots.json
+indexes/game-to-players.json
+indexes/opening-by-eco.json
+indexes/opening-by-name.json
 ```
 
-**Upload pattern:**
+**Note:** Chunks are stored under `indexes/` prefix, not `/chunks/` - all files use `indexes/` prefix.
+
+**Authentication patterns:**
 
 ```typescript
 import { getStore } from "@netlify/blobs";
 
+// LOCAL SCRIPTS (backup/upload) - requires explicit credentials
+const store = getStore({
+  name: "master-games",
+  siteID: process.env.SITE_ID,
+  token: process.env.NETLIFY_AUTH_TOKEN,
+});
+
+// DEPLOYED FUNCTIONS (fensterchess serverless functions) - automatic
 const store = getStore("master-games");
-await store.set("indexes/master-index.json", JSON.stringify(masterIndex));
+
+// Upload example
+await store.set("indexes/chunk-5.json", JSON.stringify(chunkData));
 ```
 
 ### Migration from Bundled JSON
 
-**Current state (fensterchess):**
+**Status: COMPLETE** ✅
 
-- Indexes bundled in `data/indexes/` directory
-- Deployed with application bundle
+- ✅ All indexes uploaded to Netlify Blobs
+- ✅ fensterchess serverless functions load from blobs
+- ✅ Zero bundled JSON files (30.9 MB eliminated from fensterchess)
+- ✅ Independent data updates enabled
+- ✅ Backup and upload scripts functional
 
-**Future state:**
-
-- Indexes stored in Netlify Blobs
-- Serverless functions query blobs
-- Smaller application bundle
-- Independent data updates
+**Current production state:**
+- Chunks 0-4: ~19,000 games (original 5 masters)
+- Total size: ~25 MB in Netlify Blobs
+- Backup location: `backups/<timestamp>/indexes/` (gitignored, local only)
 
 ## Dependencies
 
@@ -261,13 +284,35 @@ npm run build-indexes
 tsx scripts/buildIndexes.ts
 ```
 
+### Backup from Netlify Blobs
+
+```bash
+npm run backup
+# Downloads all indexes to backups/<timestamp>/indexes/
+# Creates timestamped backup folder: backups/2026-02-15T18-53-48/indexes/
+# Total size: ~25 MB (19K games in current production)
+```
+
+**What it does:**
+- Connects to Netlify Blobs using explicit credentials from .env
+- Lists all blobs with "indexes/" prefix
+- Downloads each blob to timestamped local folder
+- Preserves directory structure under backups/
+- Shows download progress and summary
+
 ### Upload to Netlify Blobs
 
 ```bash
 npm run upload
-# or
-tsx scripts/uploadToBlobs.ts  # TODO: Create this script
+# Shows diff summary and prompts for confirmation
 ```
+
+**What it does:**
+- Compares local files with remote blobs (content diff)
+- Shows summary: 🆕 New files, ✏️ Modified files (with size diff), ✓ Unchanged
+- Prompts: "Continue with upload? [y/N]:"
+- Only uploads new and modified files
+- Skips upload if nothing changed
 
 ### Test Filters
 
@@ -645,6 +690,7 @@ for (const [chunkId, games] of Object.entries(gamesByChunk)) {
 ```
 
 **Key insight**: File metadata is for audit/record-keeping. The decision to download is based purely on:
+
 - Page Last-Modified vs lastPageVisit (page changed?)
 - File Last-Modified vs lastPageVisit (file changed?)
 
@@ -778,6 +824,7 @@ Continue with upload? [y/N]
 5. **Source tracking** - Always update tracking files when adding new data
 6. **Deduplication** - Update deduplication-index.json incrementally during download
 7. **Indelible data** - Never change game IDs, hashes, or chunk assignments
+8. **Netlify Blobs authentication** - Local scripts MUST use explicit credentials `getStore({ name, siteID, token })`. Simple `getStore(name)` only works when deployed on Netlify. Both `NETLIFY_AUTH_TOKEN` and `SITE_ID` required in `.env`
 
 ## Development Workflow
 
@@ -792,9 +839,10 @@ Continue with upload? [y/N]
    - Test queries locally
 
 3. **Upload to Netlify Blobs:**
-   - Set `NETLIFY_BLOB_STORE_API_KEY`
-   - Run upload script
-   - Verify serverless functions can query
+   - Ensure `NETLIFY_AUTH_TOKEN` and `SITE_ID` in `.env`
+   - Run `npm run backup` first (safety)
+   - Run `npm run upload` (shows diff, prompts for confirmation)
+   - Verify serverless functions can query new data
 
 4. **Update fensterchess:**
    - If interfaces changed, update TypeScript types
