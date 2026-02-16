@@ -143,7 +143,7 @@ All indexes stored in `data/indexes/`:
     - Written during batch rebuild
     - Navigation metadata for clients
     - **totalChunks NOT included** - stored in master-index.json only
-  - **Design rationale:** 
+  - **Design rationale:**
     - Avoids re-uploading all chunks when totalChunks changes
     - buildIndexes copies existing chunks from backup
     - Only new/modified chunks are written and uploaded
@@ -370,6 +370,7 @@ npm run workflow
 - Color-coded terminal output
 
 **Steps:**
+
 1. Download games (runs downloadPgnmentor.ts)
 2. Build indexes (runs buildIndexes.ts)
 3. **Backup from production (MANDATORY)** - downloads existing chunks for copying

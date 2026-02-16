@@ -300,7 +300,7 @@ async function uploadToBlobs() {
   console.log("=".repeat(60));
   console.log("\n✓ Master game indexes are now available in Netlify Blobs.");
   console.log("✓ Production source tracking updated.");
-  
+
   // Explicit exit to ensure process terminates cleanly
   process.exit(0);
 }

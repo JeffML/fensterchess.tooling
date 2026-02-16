@@ -276,7 +276,8 @@
           const res = await fetch("/api/status");
           const status = await res.json();
 
-          document.getElementById("status-chunks").textContent = status.local.chunks;
+          document.getElementById("status-chunks").textContent =
+            status.local.chunks;
           document.getElementById("status-indexes").textContent =
             status.local.indexes;
           document.getElementById("status-production").textContent =

@@ -531,7 +531,7 @@ async function buildIndexes(): Promise<void> {
 
   console.log("\n✅ Index building complete!");
   console.log("\nNext step: Upload to Netlify Blobs (requires netlify dev)");
-  
+
   // Explicit exit to ensure process terminates cleanly
   process.exit(0);
 }

@@ -659,7 +659,7 @@ async function discoverPgnmentorFiles(): Promise<void> {
   console.log(
     "\n⚠️  Note: Production tracking will be updated after upload to Netlify Blobs.\n",
   );
-  
+
   // Explicit exit to ensure process terminates cleanly
   process.exit(0);
 }

@@ -126,8 +126,7 @@ const tests = [
 
       const expectedToProcess = ["TestFile3.zip"];
       const passes =
-        filesToProcess.length === 1 &&
-        filesToProcess[0] === "TestFile3.zip";
+        filesToProcess.length === 1 && filesToProcess[0] === "TestFile3.zip";
 
       if (passes) {
         console.log(
@@ -198,8 +197,7 @@ const tests = [
 
       // Should still want to download TestFile3.zip (not in production)
       const passes =
-        filesToProcess.length === 1 &&
-        filesToProcess[0] === "TestFile3.zip";
+        filesToProcess.length === 1 && filesToProcess[0] === "TestFile3.zip";
 
       if (passes) {
         console.log(
@@ -302,7 +300,9 @@ if (failed === 0) {
   console.log("\n✅ Source tracking correctly represents production state");
   console.log("✅ Download doesn't update tracking (local work in progress)");
   console.log("✅ Upload updates tracking (production state synchronized)");
-  console.log("✅ Re-running after abort correctly re-downloads incomplete files\n");
+  console.log(
+    "✅ Re-running after abort correctly re-downloads incomplete files\n",
+  );
   process.exit(0);
 } else {
   console.log("\n❌ Some tests failed\n");
