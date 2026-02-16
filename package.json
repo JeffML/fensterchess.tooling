@@ -11,7 +11,7 @@
     "upload": "node --env-file=.env scripts/uploadToBlobs.js",
     "workflow": "node scripts/workflowServer.js",
     "test:connection": "node --env-file=.env scripts/testBlobConnection.js",
-    "test:filters": "node test/testFiltering.js",
+    "test:filters": "tsx test/testFiltering.js",
     "test:chunks": "tsx test/testChunkLogic.ts",
     "test:pipeline": "tsx test/testPipeline.ts",
     "test:batch": "vitest run test/batchMetadata.test.ts",

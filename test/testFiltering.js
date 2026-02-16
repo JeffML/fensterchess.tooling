@@ -1,8 +1,8 @@
 // Test game filtering and hash generation
 // Phase 0 - Foundation
 import { ChessPGN } from "@chess-pgn/chess-pgn";
-import { shouldImportGame, stripAnnotations } from "./filterGame.js";
-import { hashGame } from "./hashGame.js";
+import { shouldImportGame, stripAnnotations } from "../scripts/filterGame.js";
+import { hashGame } from "../scripts/hashGame.js";
 const samplePgn = `
 [Event "Test Tournament"]
 [White "Carlsen"]
