@@ -41,6 +41,13 @@ Download → Filter → Hash/Dedupe → Build Indexes → Chunk → Upload to Ne
 - **`filterGame.ts`** - Site-specific quality filters
 - **`hashGame.ts`** - Deterministic game hashing for deduplication
 - **`types.ts`** - TypeScript interfaces for GameMetadata, indexes, etc.
+- **`generateFromToIndex.ts`** - ⚠️ **TEMPORARY** - Generates fromToPositionIndexed.json from eco.json's fromTo.json
+  - Downloads fromTo.json from eco.json GitHub (2.6 MB array format)
+  - Transforms to position-indexed object (4.1 MB)
+  - Outputs to data/indexes/fromToPositionIndexed.json
+  - **TODO:** Migrate to eco.json.tooling when that repo is created
+  - See NOTES_fromToIndex.md and TODO.md for migration plan
+  - Run via `npm run generate:fromto`
 - **`workflowServer.js`** - Express server for web-based workflow UI
   - SSE streaming for real-time command output
   - 4-step workflow: download → build indexes → backup → upload
