@@ -1,5 +1,5 @@
 // Generate fromToPositionIndexed.json from eco.json's fromTo.json
-// 
+//
 // TODO: This script should eventually be moved to eco.json.tooling repository
 // where all eco.json data transformations belong. It's here temporarily for
 // convenience during development. When eco.json.tooling is set up, move this
@@ -12,7 +12,8 @@
 import fs from "fs";
 import path from "path";
 
-const FROM_TO_URL = "https://raw.githubusercontent.com/JeffML/eco.json/master/fromTo.json";
+const FROM_TO_URL =
+  "https://raw.githubusercontent.com/JeffML/eco.json/master/fromTo.json";
 const OUTPUT_DIR = "./data/indexes";
 const OUTPUT_FILE = "fromToPositionIndexed.json";
 
@@ -34,13 +35,20 @@ async function generateFromToIndex() {
   // Download fromTo.json from eco.json GitHub
   console.log(`📥 Downloading fromTo.json from eco.json...`);
   const response = await fetch(FROM_TO_URL);
-  
+
   if (!response.ok) {
     throw new Error(`Failed to download fromTo.json: ${response.status}`);
   }
 
-  const fromToArray: [string, string, string, string][] = await response.json();
-  console.log(`  ✅ Downloaded ${fromToArray.length.toLocaleString()} transitions\n`);
+  const fromToArray = (await response.json()) as [
+    string,
+    string,
+    string,
+    string,
+  ][];
+  console.log(
+    `  ✅ Downloaded ${fromToArray.length.toLocaleString()} transitions\n`,
+  );
 
   // Build position-indexed structure
   console.log(`🔨 Building position-indexed structure...`);
@@ -54,7 +62,7 @@ async function generateFromToIndex() {
 
   for (const [fromFen, toFen] of fromToArray) {
     processed++;
-    
+
     if (processed % progressInterval === 0) {
       process.stdout.write(`\r  Processing: ${processed.toLocaleString()}...`);
     }
@@ -80,7 +88,9 @@ async function generateFromToIndex() {
     }
   }
 
-  process.stdout.write(`\r  Processing: ${processed.toLocaleString()} complete!\n`);
+  process.stdout.write(
+    `\r  Processing: ${processed.toLocaleString()} complete!\n`,
+  );
 
   const toCount = Object.keys(indexed.to).length;
   const fromCount = Object.keys(indexed.from).length;
@@ -101,8 +111,10 @@ async function generateFromToIndex() {
   console.log(`  ✅ Saved ${sizeMB} MB\n`);
 
   console.log("✅ Generation complete!");
-  console.log("\n📝 Remember: This transformation should eventually live in eco.json.tooling");
-  
+  console.log(
+    "\n📝 Remember: This transformation should eventually live in eco.json.tooling",
+  );
+
   process.exit(0);
 }
 
