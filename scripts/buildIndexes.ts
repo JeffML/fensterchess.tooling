@@ -450,9 +450,7 @@ async function buildIndexes(): Promise<void> {
       fs.existsSync(chunkPath)
     ) {
       // Load both to compare game IDs
-      const backupChunk = JSON.parse(
-        fs.readFileSync(backupChunkPath, "utf-8"),
-      );
+      const backupChunk = JSON.parse(fs.readFileSync(backupChunkPath, "utf-8"));
       const currentChunk = JSON.parse(fs.readFileSync(chunkPath, "utf-8"));
 
       // If game IDs match, copy from backup (already enriched)
@@ -461,9 +459,7 @@ async function buildIndexes(): Promise<void> {
 
       if (
         backupGameIds.length === currentGameIds.length &&
-        backupGameIds.every(
-          (id: number, i: number) => id === currentGameIds[i],
-        )
+        backupGameIds.every((id: number, i: number) => id === currentGameIds[i])
       ) {
         // Copy from backup (already enriched and in correct format)
         fs.copyFileSync(backupChunkPath, chunkPath);
@@ -535,6 +531,9 @@ async function buildIndexes(): Promise<void> {
 
   console.log("\n✅ Index building complete!");
   console.log("\nNext step: Upload to Netlify Blobs (requires netlify dev)");
+  
+  // Explicit exit to ensure process terminates cleanly
+  process.exit(0);
 }
 
 // Run if executed directly

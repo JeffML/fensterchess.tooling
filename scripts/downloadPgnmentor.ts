@@ -459,9 +459,7 @@ async function discoverPgnmentorFiles(): Promise<void> {
 
   console.log("📂 Loading production tracking (from last upload)...");
   const inProductionCount = Object.keys(sourceTracking.files).length;
-  console.log(
-    `  ✅ Files in production: ${inProductionCount}\n`,
-  );
+  console.log(`  ✅ Files in production: ${inProductionCount}\n`);
 
   const visitDate = new Date().toISOString();
 
@@ -658,7 +656,12 @@ async function discoverPgnmentorFiles(): Promise<void> {
   console.log(`Next game ID: ${nextGameId}`);
   console.log("=".repeat(60));
   console.log("\n✅ Download and chunking complete!");
-  console.log("\n⚠️  Note: Production tracking will be updated after upload to Netlify Blobs.\n");
+  console.log(
+    "\n⚠️  Note: Production tracking will be updated after upload to Netlify Blobs.\n",
+  );
+  
+  // Explicit exit to ensure process terminates cleanly
+  process.exit(0);
 }
 
 // Run if executed directly

@@ -105,6 +105,9 @@ async function backupFromBlobs() {
   console.log(
     "   All indexes saved locally. Safe to proceed with data updates.",
   );
+  
+  // Explicit exit to ensure process terminates cleanly
+  process.exit(0);
 }
 
 backupFromBlobs().catch((error) => {

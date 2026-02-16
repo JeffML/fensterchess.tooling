@@ -42,7 +42,12 @@ function runCommand(command, args = [], options = {}) {
       if (code === 0) {
         resolve({ code, stdout, stderr });
       } else {
-        reject({ code, stdout, stderr, error: `Process exited with code ${code}` });
+        reject({
+          code,
+          stdout,
+          stderr,
+          error: `Process exited with code ${code}`,
+        });
       }
     });
 
@@ -57,35 +62,61 @@ app.get("/api/status", async (req, res) => {
   try {
     const indexesDir = path.join(__dirname, "..", "data", "indexes");
     const chunksExist = fs.existsSync(indexesDir);
-    
+
     let chunkCount = 0;
     let indexCount = 0;
     let hasDedup = false;
     let hasSourceTracking = false;
-    
+    let productionFileCount = 0;
+
     if (chunksExist) {
       const files = fs.readdirSync(indexesDir);
-      chunkCount = files.filter(f => f.startsWith("chunk-") && f.endsWith(".json")).length;
-      indexCount = files.filter(f => 
-        !f.startsWith("chunk-") && 
-        f.endsWith(".json") && 
-        !f.includes("deduplication") && 
-        !f.includes("source-tracking")
+      chunkCount = files.filter(
+        (f) => f.startsWith("chunk-") && f.endsWith(".json"),
+      ).length;
+      indexCount = files.filter(
+        (f) =>
+          !f.startsWith("chunk-") &&
+          f.endsWith(".json") &&
+          !f.includes("deduplication") &&
+          !f.includes("source-tracking"),
       ).length;
       hasDedup = files.includes("deduplication-index.json");
       hasSourceTracking = files.includes("source-tracking.json");
+
+      // Read production state from source-tracking.json
+      if (hasSourceTracking) {
+        try {
+          const sourceTrackingPath = path.join(
+            indexesDir,
+            "source-tracking.json",
+          );
+          const tracking = JSON.parse(
+            fs.readFileSync(sourceTrackingPath, "utf-8"),
+          );
+          productionFileCount = Object.keys(
+            tracking.pgnmentor?.files || {},
+          ).length;
+        } catch (error) {
+          // Ignore parse errors
+        }
+      }
     }
 
     const backupsDir = path.join(__dirname, "..", "backups");
-    const backups = fs.existsSync(backupsDir) 
+    const backups = fs.existsSync(backupsDir)
       ? fs.readdirSync(backupsDir).sort().reverse()
       : [];
 
     res.json({
-      chunks: chunkCount,
-      indexes: indexCount,
-      hasDedup,
-      hasSourceTracking,
+      local: {
+        chunks: chunkCount,
+        indexes: indexCount,
+        hasDedup,
+      },
+      production: {
+        filesUploaded: productionFileCount,
+      },
       latestBackup: backups[0] || null,
       backupCount: backups.length,
     });
@@ -97,7 +128,7 @@ app.get("/api/status", async (req, res) => {
 // Step 1: Download new games
 app.post("/api/download", async (req, res) => {
   const { maxFiles } = req.body;
-  
+
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache",
@@ -106,7 +137,7 @@ app.post("/api/download", async (req, res) => {
 
   try {
     const env = maxFiles ? { MAX_FILES: maxFiles.toString() } : {};
-    
+
     await runCommand("npm", ["run", "download:pgnmentor"], {
       env,
       onOutput: (data, type) => {
@@ -117,7 +148,9 @@ app.post("/api/download", async (req, res) => {
     res.write(`data: ${JSON.stringify({ type: "done", success: true })}\n\n`);
     res.end();
   } catch (error) {
-    res.write(`data: ${JSON.stringify({ type: "error", error: error.error || error.message })}\n\n`);
+    res.write(
+      `data: ${JSON.stringify({ type: "error", error: error.error || error.message })}\n\n`,
+    );
     res.end();
   }
 });
@@ -140,7 +173,9 @@ app.post("/api/build-indexes", async (req, res) => {
     res.write(`data: ${JSON.stringify({ type: "done", success: true })}\n\n`);
     res.end();
   } catch (error) {
-    res.write(`data: ${JSON.stringify({ type: "error", error: error.error || error.message })}\n\n`);
+    res.write(
+      `data: ${JSON.stringify({ type: "error", error: error.error || error.message })}\n\n`,
+    );
     res.end();
   }
 });
@@ -163,7 +198,9 @@ app.post("/api/backup", async (req, res) => {
     res.write(`data: ${JSON.stringify({ type: "done", success: true })}\n\n`);
     res.end();
   } catch (error) {
-    res.write(`data: ${JSON.stringify({ type: "error", error: error.error || error.message })}\n\n`);
+    res.write(
+      `data: ${JSON.stringify({ type: "error", error: error.error || error.message })}\n\n`,
+    );
     res.end();
   }
 });
@@ -188,13 +225,17 @@ app.post("/api/upload-preview", async (req, res) => {
     proc.stdout.on("data", (data) => {
       const text = data.toString();
       output += text;
-      res.write(`data: ${JSON.stringify({ type: "stdout", output: text })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ type: "stdout", output: text })}\n\n`,
+      );
     });
 
     proc.stderr.on("data", (data) => {
       const text = data.toString();
       output += text;
-      res.write(`data: ${JSON.stringify({ type: "stderr", output: text })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ type: "stderr", output: text })}\n\n`,
+      );
     });
 
     // Auto-answer 'n' to the confirmation prompt
@@ -203,11 +244,15 @@ app.post("/api/upload-preview", async (req, res) => {
     }, 1000);
 
     proc.on("close", () => {
-      res.write(`data: ${JSON.stringify({ type: "done", success: true, preview: output })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ type: "done", success: true, preview: output })}\n\n`,
+      );
       res.end();
     });
   } catch (error) {
-    res.write(`data: ${JSON.stringify({ type: "error", error: error.message })}\n\n`);
+    res.write(
+      `data: ${JSON.stringify({ type: "error", error: error.message })}\n\n`,
+    );
     res.end();
   }
 });
@@ -227,11 +272,15 @@ app.post("/api/upload", async (req, res) => {
     });
 
     proc.stdout.on("data", (data) => {
-      res.write(`data: ${JSON.stringify({ type: "stdout", output: data.toString() })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ type: "stdout", output: data.toString() })}\n\n`,
+      );
     });
 
     proc.stderr.on("data", (data) => {
-      res.write(`data: ${JSON.stringify({ type: "stderr", output: data.toString() })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ type: "stderr", output: data.toString() })}\n\n`,
+      );
     });
 
     // Auto-answer 'y' to confirmation
@@ -241,14 +290,20 @@ app.post("/api/upload", async (req, res) => {
 
     proc.on("close", (code) => {
       if (code === 0) {
-        res.write(`data: ${JSON.stringify({ type: "done", success: true })}\n\n`);
+        res.write(
+          `data: ${JSON.stringify({ type: "done", success: true })}\n\n`,
+        );
       } else {
-        res.write(`data: ${JSON.stringify({ type: "error", error: "Process exited with code " + code })}\n\n`);
+        res.write(
+          `data: ${JSON.stringify({ type: "error", error: "Process exited with code " + code })}\n\n`,
+        );
       }
       res.end();
     });
   } catch (error) {
-    res.write(`data: ${JSON.stringify({ type: "error", error: error.message })}\n\n`);
+    res.write(
+      `data: ${JSON.stringify({ type: "error", error: error.message })}\n\n`,
+    );
     res.end();
   }
 });

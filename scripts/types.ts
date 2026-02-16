@@ -55,16 +55,16 @@ export interface GameMetadata {
  */
 /**
  * Game chunk structure - supports both simple and full metadata formats
- * 
+ *
  * Simple format (downloadPgnmentor.ts): { games: [] }
  *   - Written during incremental downloads
  *   - Only chunks with game changes are uploaded
- * 
+ *
  * Full format (buildIndexes.ts): { version, chunkId, startIdx, endIdx, games }
  *   - Written during batch rebuild
  *   - Adds navigation metadata for clients
  *   - totalChunks stored in master-index.json only (not in individual chunks)
- * 
+ *
  * This design avoids re-uploading all chunks when totalChunks changes.
  */
 export interface GameIndexChunk {
@@ -72,7 +72,7 @@ export interface GameIndexChunk {
   chunkId?: number;
   startIdx?: number;
   endIdx?: number;
-  games: GameMetadata[];  // Only required field
+  games: GameMetadata[]; // Only required field
 }
 
 /**

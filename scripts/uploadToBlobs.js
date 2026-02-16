@@ -217,7 +217,7 @@ async function uploadToBlobs() {
 
   // Update source-tracking.json to reflect production state
   console.log("\n📝 Updating production source tracking...");
-  
+
   try {
     // Find which chunks were uploaded
     const uploadedChunkFiles = uploads
@@ -229,11 +229,11 @@ async function uploadToBlobs() {
 
       // Read all uploaded chunks to extract source file metadata
       const sourceFileMap = new Map();
-      
+
       for (const chunkFilename of uploadedChunkFiles) {
         const chunkPath = path.join(INDEXES_DIR, chunkFilename);
         const chunkData = JSON.parse(fs.readFileSync(chunkPath, "utf-8"));
-        
+
         for (const game of chunkData.games) {
           if (game.source === "pgnmentor" && game.sourceFile) {
             if (!sourceFileMap.has(game.sourceFile)) {
@@ -254,7 +254,9 @@ async function uploadToBlobs() {
       let allSourceTracking = {};
 
       if (fs.existsSync(sourceTrackingPath)) {
-        allSourceTracking = JSON.parse(fs.readFileSync(sourceTrackingPath, "utf-8"));
+        allSourceTracking = JSON.parse(
+          fs.readFileSync(sourceTrackingPath, "utf-8"),
+        );
       }
 
       if (!allSourceTracking.pgnmentor) {
@@ -273,10 +275,12 @@ async function uploadToBlobs() {
 
       fs.writeFileSync(
         sourceTrackingPath,
-        JSON.stringify(allSourceTracking, null, 2)
+        JSON.stringify(allSourceTracking, null, 2),
       );
 
-      console.log(`  ✅ Updated tracking for ${sourceFileMap.size} source files`);
+      console.log(
+        `  ✅ Updated tracking for ${sourceFileMap.size} source files`,
+      );
     } else {
       console.log("  ℹ️  No chunk files uploaded - tracking unchanged");
     }
@@ -296,6 +300,9 @@ async function uploadToBlobs() {
   console.log("=".repeat(60));
   console.log("\n✓ Master game indexes are now available in Netlify Blobs.");
   console.log("✓ Production source tracking updated.");
+  
+  // Explicit exit to ensure process terminates cleanly
+  process.exit(0);
 }
 
 uploadToBlobs().catch((error) => {
