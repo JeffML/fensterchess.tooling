@@ -215,6 +215,76 @@ async function uploadToBlobs() {
     }
   }
 
+  // Update source-tracking.json to reflect production state
+  console.log("\n📝 Updating production source tracking...");
+  
+  try {
+    // Find which chunks were uploaded
+    const uploadedChunkFiles = uploads
+      .filter((u) => u.filename.startsWith("chunk-"))
+      .map((u) => u.filename);
+
+    if (uploadedChunkFiles.length > 0) {
+      console.log(`  Found ${uploadedChunkFiles.length} chunk files uploaded`);
+
+      // Read all uploaded chunks to extract source file metadata
+      const sourceFileMap = new Map();
+      
+      for (const chunkFilename of uploadedChunkFiles) {
+        const chunkPath = path.join(INDEXES_DIR, chunkFilename);
+        const chunkData = JSON.parse(fs.readFileSync(chunkPath, "utf-8"));
+        
+        for (const game of chunkData.games) {
+          if (game.source === "pgnmentor" && game.sourceFile) {
+            if (!sourceFileMap.has(game.sourceFile)) {
+              sourceFileMap.set(game.sourceFile, {
+                filename: game.sourceFile,
+                url: `https://www.pgnmentor.com/players/${game.sourceFile}`,
+                gameCount: 0,
+                uploadDate: new Date().toISOString(),
+              });
+            }
+            sourceFileMap.get(game.sourceFile).gameCount++;
+          }
+        }
+      }
+
+      // Update source-tracking.json
+      const sourceTrackingPath = path.join(INDEXES_DIR, "source-tracking.json");
+      let allSourceTracking = {};
+
+      if (fs.existsSync(sourceTrackingPath)) {
+        allSourceTracking = JSON.parse(fs.readFileSync(sourceTrackingPath, "utf-8"));
+      }
+
+      if (!allSourceTracking.pgnmentor) {
+        allSourceTracking.pgnmentor = { files: {} };
+      }
+
+      // Merge uploaded file metadata into tracking
+      for (const [filename, metadata] of sourceFileMap) {
+        allSourceTracking.pgnmentor.files[filename] = {
+          ...allSourceTracking.pgnmentor.files[filename], // Keep existing metadata like lastModified
+          ...metadata, // Update with upload metadata
+        };
+      }
+
+      allSourceTracking.pgnmentor.lastPageVisit = new Date().toISOString();
+
+      fs.writeFileSync(
+        sourceTrackingPath,
+        JSON.stringify(allSourceTracking, null, 2)
+      );
+
+      console.log(`  ✅ Updated tracking for ${sourceFileMap.size} source files`);
+    } else {
+      console.log("  ℹ️  No chunk files uploaded - tracking unchanged");
+    }
+  } catch (error) {
+    console.warn(`  ⚠️  Failed to update source tracking: ${error.message}`);
+    console.warn("     Continuing anyway - tracking can be manually updated");
+  }
+
   // Final Summary
   console.log("\n" + "=".repeat(60));
   console.log("🎉 Upload Complete");
@@ -225,6 +295,7 @@ async function uploadToBlobs() {
   console.log(`Site ID:         ${process.env.SITE_ID.substring(0, 8)}...`);
   console.log("=".repeat(60));
   console.log("\n✓ Master game indexes are now available in Netlify Blobs.");
+  console.log("✓ Production source tracking updated.");
 }
 
 uploadToBlobs().catch((error) => {

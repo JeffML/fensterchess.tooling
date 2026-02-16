@@ -437,7 +437,7 @@ async function discoverPgnmentorFiles(): Promise<void> {
     fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
   }
 
-  // Load existing source tracking
+  // Load existing source tracking (production state - updated after upload)
   const sourceTrackingPath = path.join(
     DOWNLOAD_DIR,
     "..",
@@ -457,10 +457,10 @@ async function discoverPgnmentorFiles(): Promise<void> {
     files: {},
   };
 
-  console.log("📂 Loading pgnmentor source tracking...");
-  const processedFileCount = Object.keys(sourceTracking.files).length;
+  console.log("📂 Loading production tracking (from last upload)...");
+  const inProductionCount = Object.keys(sourceTracking.files).length;
   console.log(
-    `  ✅ Previously processed: ${processedFileCount} files\n`,
+    `  ✅ Files in production: ${inProductionCount}\n`,
   );
 
   const visitDate = new Date().toISOString();
@@ -522,15 +522,7 @@ async function discoverPgnmentorFiles(): Promise<void> {
 
   if (filesToProcess.length === 0) {
     console.log("\n✅ All files up to date - nothing to download");
-
-    // Update lastPageVisit for audit trail
-    sourceTracking.lastPageVisit = visitDate;
-    allSourceTracking.pgnmentor = sourceTracking;
-    fs.writeFileSync(
-      sourceTrackingPath,
-      JSON.stringify(allSourceTracking, null, 2),
-    );
-    console.log(`✅ Tracking updated: ${visitDate}\n`);
+    console.log("   (Production tracking will be updated after upload)\n");
     return;
   }
 
@@ -611,17 +603,6 @@ async function discoverPgnmentorFiles(): Promise<void> {
       allNewGames.push(...games);
       nextGameId = nextIndex;
 
-      // Update source tracking for this file
-      const metadata = fileMetadataMap.get(filename);
-      sourceTracking.files[filename] = {
-        filename,
-        url,
-        downloadDate: new Date().toISOString(),
-        lastModified: metadata?.lastModified,
-        etag: metadata?.etag,
-        gameCount: games.length,
-      };
-
       console.log(`  ✅ Imported ${games.length} new games`);
       console.log(
         `     Total: ${stats.total}, Accepted: ${stats.accepted}, Rejected: ${stats.rejected}, Duplicates: ${stats.duplicates}`,
@@ -642,14 +623,6 @@ async function discoverPgnmentorFiles(): Promise<void> {
         console.log(
           `  ✅ Deduplication index updated (${Object.keys(deduplicationIndex).length} unique games)`,
         );
-
-        // Update source tracking (without lastPageVisit - only at end)
-        allSourceTracking.pgnmentor = sourceTracking;
-        fs.writeFileSync(
-          sourceTrackingPath,
-          JSON.stringify(allSourceTracking, null, 2),
-        );
-        console.log(`  ✅ Source tracking updated (${Object.keys(sourceTracking.files).length} files)`);
       }
 
       // Throttle
@@ -673,14 +646,6 @@ async function discoverPgnmentorFiles(): Promise<void> {
   const dedupPath = path.join(indexesDir, "deduplication-index.json");
   fs.writeFileSync(dedupPath, JSON.stringify(deduplicationIndex, null, 2));
 
-  // Final source tracking update (set lastPageVisit for audit trail)
-  sourceTracking.lastPageVisit = visitDate;
-  allSourceTracking.pgnmentor = sourceTracking;
-  fs.writeFileSync(
-    sourceTrackingPath,
-    JSON.stringify(allSourceTracking, null, 2),
-  );
-
   // Final summary
   console.log("\n" + "=".repeat(60));
   console.log("📊 Processing Complete");
@@ -692,7 +657,8 @@ async function discoverPgnmentorFiles(): Promise<void> {
   console.log(`Duplicates skipped: ${totalStats.duplicates}`);
   console.log(`Next game ID: ${nextGameId}`);
   console.log("=".repeat(60));
-  console.log("\n✅ Download and chunking complete!\n");
+  console.log("\n✅ Download and chunking complete!");
+  console.log("\n⚠️  Note: Production tracking will be updated after upload to Netlify Blobs.\n");
 }
 
 // Run if executed directly
