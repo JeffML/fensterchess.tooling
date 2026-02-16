@@ -458,71 +458,51 @@ async function discoverPgnmentorFiles(): Promise<void> {
   };
 
   console.log("📂 Loading pgnmentor source tracking...");
+  const processedFileCount = Object.keys(sourceTracking.files).length;
   console.log(
-    `  ✅ Last page visit: ${sourceTracking.lastPageVisit || "never"}\n`,
+    `  ✅ Previously processed: ${processedFileCount} files\n`,
   );
 
   const visitDate = new Date().toISOString();
-  const lastVisitDate = sourceTracking.lastPageVisit;
-
-  // Step 0: Check if files page has been modified since last visit
-  console.log("🔍 Checking if files page has been modified...");
-  const pageResponse = await fetch(FILES_PAGE_URL, {
-    method: "HEAD",
-    headers: { "User-Agent": USER_AGENT },
-  });
-
-  const pageLastModified = pageResponse.headers.get("last-modified");
-  console.log(`  Page Last-Modified: ${pageLastModified || "unknown"}`);
-
-  if (lastVisitDate && pageLastModified) {
-    const lastVisitTime = new Date(lastVisitDate).getTime();
-    const pageModifiedTime = new Date(pageLastModified).getTime();
-
-    if (pageModifiedTime <= lastVisitTime) {
-      console.log(`  ✅ Page unchanged since last visit - nothing to do\n`);
-      return;
-    }
-    console.log(
-      `  📝 Page has been updated since last visit - checking files...\n`,
-    );
-  } else {
-    console.log(
-      `  ⚠️  No previous visit date - proceeding with full check...\n`,
-    );
-  }
 
   // Step 1: Discover available files
   const discoveredFiles = await discoverPlayerFiles();
 
-  // Step 2: Batch check HEAD metadata (only if page was modified)
+  // Step 2: Batch check HEAD metadata for all files
   const fileMetadataMap = await batchCheckFileMetadata(discoveredFiles);
 
-  // Step 3: Classify files as new/modified based on Last-Modified vs lastPageVisit
+  // Step 3: Classify files as new/modified using individual file tracking
   const filesToProcess: string[] = [];
   const unchangedFiles: string[] = [];
 
   for (const filename of discoveredFiles) {
-    const metadata = fileMetadataMap.get(filename);
+    const currentMetadata = fileMetadataMap.get(filename);
+    const trackedFile = sourceTracking.files[filename];
 
-    // If we have no previous visit or no Last-Modified header, include the file
-    if (!lastVisitDate || !metadata?.lastModified) {
-      console.log(`  📥 Will process: ${filename} (no date comparison)`);
+    if (!trackedFile) {
+      // Never processed before
+      console.log(`  📥 Will process: ${filename} (new file)`);
       filesToProcess.push(filename);
       continue;
     }
 
-    // Compare file's Last-Modified with our last page visit
-    const lastVisitTime = new Date(lastVisitDate).getTime();
-    const fileModifiedTime = new Date(metadata.lastModified).getTime();
+    // Compare current Last-Modified with stored Last-Modified
+    if (currentMetadata?.lastModified && trackedFile.lastModified) {
+      const storedTime = new Date(trackedFile.lastModified).getTime();
+      const currentTime = new Date(currentMetadata.lastModified).getTime();
 
-    if (fileModifiedTime > lastVisitTime) {
-      console.log(`  📥 Will process: ${filename}`);
-      console.log(`     File modified: ${metadata.lastModified}`);
-      console.log(`     Last visit:    ${lastVisitDate}`);
-      filesToProcess.push(filename);
+      if (currentTime > storedTime) {
+        console.log(`  📥 Will process: ${filename} (updated)`);
+        console.log(`     Current: ${currentMetadata.lastModified}`);
+        console.log(`     Stored:  ${trackedFile.lastModified}`);
+        filesToProcess.push(filename);
+      } else {
+        unchangedFiles.push(filename);
+      }
     } else {
-      unchangedFiles.push(filename);
+      // No Last-Modified data - process to be safe
+      console.log(`  📥 Will process: ${filename} (no metadata)`);
+      filesToProcess.push(filename);
     }
   }
 
@@ -543,14 +523,14 @@ async function discoverPgnmentorFiles(): Promise<void> {
   if (filesToProcess.length === 0) {
     console.log("\n✅ All files up to date - nothing to download");
 
-    // Update lastPageVisit to record that we checked
+    // Update lastPageVisit for audit trail
     sourceTracking.lastPageVisit = visitDate;
     allSourceTracking.pgnmentor = sourceTracking;
     fs.writeFileSync(
       sourceTrackingPath,
       JSON.stringify(allSourceTracking, null, 2),
     );
-    console.log(`✅ Updated lastPageVisit to ${visitDate}\n`);
+    console.log(`✅ Tracking updated: ${visitDate}\n`);
     return;
   }
 
@@ -663,14 +643,13 @@ async function discoverPgnmentorFiles(): Promise<void> {
           `  ✅ Deduplication index updated (${Object.keys(deduplicationIndex).length} unique games)`,
         );
 
-        // Update source tracking
-        sourceTracking.lastPageVisit = visitDate;
+        // Update source tracking (without lastPageVisit - only at end)
         allSourceTracking.pgnmentor = sourceTracking;
         fs.writeFileSync(
           sourceTrackingPath,
           JSON.stringify(allSourceTracking, null, 2),
         );
-        console.log(`  ✅ Source tracking updated`);
+        console.log(`  ✅ Source tracking updated (${Object.keys(sourceTracking.files).length} files)`);
       }
 
       // Throttle
@@ -694,7 +673,7 @@ async function discoverPgnmentorFiles(): Promise<void> {
   const dedupPath = path.join(indexesDir, "deduplication-index.json");
   fs.writeFileSync(dedupPath, JSON.stringify(deduplicationIndex, null, 2));
 
-  // Final source tracking update
+  // Final source tracking update (set lastPageVisit for audit trail)
   sourceTracking.lastPageVisit = visitDate;
   allSourceTracking.pgnmentor = sourceTracking;
   fs.writeFileSync(
