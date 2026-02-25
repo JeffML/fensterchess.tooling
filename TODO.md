@@ -1,5 +1,11 @@
 # fensterchess.tooling TODO List
 
+## Documentation Direction
+
+- [x] Keep web workflow UI as the primary operator path (`npm run workflow` → http://localhost:3030)
+- [x] Keep README focused on workflow page behavior and troubleshooting
+- [ ] Add a short `ARCHITECTURE.md` for deeper script internals and repository boundaries
+
 ## Technical Debt & Future Migrations
 
 ### 🔴 HIGH PRIORITY - Migrate fromToPositionIndexed.json generation to eco.json.tooling
@@ -52,8 +58,8 @@
 
 ### Workflow Improvements
 
-- [ ] Add diff/summary to upload script
-- [ ] Implement upload confirmation prompt
+- [x] Add diff/summary to upload script
+- [x] Implement upload confirmation prompt
 - [ ] Add games-in-progress filter to filterGame.ts
 
 ### Testing & Validation
