@@ -123,6 +123,38 @@ async function uploadToBlobs() {
     0,
   );
 
+  // Calculate game totals for summary (from master-index.json)
+  let localTotalGames = null;
+  let remoteTotalGames = null;
+
+  try {
+    const localMasterIndexPath = path.join(INDEXES_DIR, "master-index.json");
+    if (fs.existsSync(localMasterIndexPath)) {
+      const localMasterIndex = JSON.parse(
+        fs.readFileSync(localMasterIndexPath, "utf-8"),
+      );
+      if (typeof localMasterIndex.totalGames === "number") {
+        localTotalGames = localMasterIndex.totalGames;
+      }
+    }
+  } catch (error) {
+    // Non-fatal: game totals are optional summary information
+  }
+
+  try {
+    const remoteMasterIndexContent = await store.get("indexes/master-index.json", {
+      type: "text",
+    });
+    if (remoteMasterIndexContent) {
+      const remoteMasterIndex = JSON.parse(remoteMasterIndexContent);
+      if (typeof remoteMasterIndex.totalGames === "number") {
+        remoteTotalGames = remoteMasterIndex.totalGames;
+      }
+    }
+  } catch (error) {
+    // Non-fatal: remote may not have a master index yet
+  }
+
   // Show diff summary
   console.log("=".repeat(60));
   console.log("📊 Upload Summary");
@@ -165,6 +197,14 @@ async function uploadToBlobs() {
   console.log(
     `Changes:           ${newFiles.length} new, ${modifiedFiles.length} modified, ${unchangedFiles.length} unchanged`,
   );
+  if (localTotalGames !== null) {
+    console.log(`Total games:       ${localTotalGames.toLocaleString()} (local)`);
+  }
+  if (localTotalGames !== null && remoteTotalGames !== null) {
+    const newGames = localTotalGames - remoteTotalGames;
+    const sign = newGames >= 0 ? "+" : "";
+    console.log(`New games:         ${sign}${newGames.toLocaleString()} vs production`);
+  }
   console.log("=".repeat(60));
 
   // If nothing to upload, exit
