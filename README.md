@@ -58,6 +58,17 @@ The page orchestrates a strict, ordered workflow with live output:
   - Runs `uploadToBlobs.js`
   - Shows diff/summary and uploads changed files after confirmation handling
 
+### Tracking Semantics
+
+The workflow uses two tracking states:
+
+- **Local source tracking** (updated during download)
+  - Used to avoid reprocessing unchanged source files in later local runs
+- **Production tracking** (finalized after upload)
+  - Becomes authoritative when updated data is actually uploaded to Netlify Blobs
+
+When you see: **"Production tracking is still finalized after upload to Netlify Blobs"**, it means local tracking was updated, but production has not been updated yet.
+
 ### Real-Time Output
 
 - Terminal output is streamed to the browser (SSE)

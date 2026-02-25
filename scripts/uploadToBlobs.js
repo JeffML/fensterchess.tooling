@@ -142,9 +142,12 @@ async function uploadToBlobs() {
   }
 
   try {
-    const remoteMasterIndexContent = await store.get("indexes/master-index.json", {
-      type: "text",
-    });
+    const remoteMasterIndexContent = await store.get(
+      "indexes/master-index.json",
+      {
+        type: "text",
+      },
+    );
     if (remoteMasterIndexContent) {
       const remoteMasterIndex = JSON.parse(remoteMasterIndexContent);
       if (typeof remoteMasterIndex.totalGames === "number") {
@@ -198,12 +201,16 @@ async function uploadToBlobs() {
     `Changes:           ${newFiles.length} new, ${modifiedFiles.length} modified, ${unchangedFiles.length} unchanged`,
   );
   if (localTotalGames !== null) {
-    console.log(`Total games:       ${localTotalGames.toLocaleString()} (local)`);
+    console.log(
+      `Total games:       ${localTotalGames.toLocaleString()} (local)`,
+    );
   }
   if (localTotalGames !== null && remoteTotalGames !== null) {
     const newGames = localTotalGames - remoteTotalGames;
     const sign = newGames >= 0 ? "+" : "";
-    console.log(`New games:         ${sign}${newGames.toLocaleString()} vs production`);
+    console.log(
+      `New games:         ${sign}${newGames.toLocaleString()} vs production`,
+    );
   }
   console.log("=".repeat(60));
 

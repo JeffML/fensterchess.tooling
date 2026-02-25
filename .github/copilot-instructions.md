@@ -40,6 +40,12 @@ Behavior:
 - Enforces step order (no skipping)
 - Supports upload preview by auto-answering upload prompt with `n`
 
+Tracking behavior:
+
+- Download updates **local** source tracking for incremental reruns
+- Production/source-of-truth tracking is finalized after successful upload to Netlify Blobs
+- The log message "Production tracking is still finalized after upload to Netlify Blobs" means local tracking changed, production has not yet changed
+
 ## Core Scripts
 
 - `scripts/downloadPgnmentor.ts` - Incremental pgnmentor downloader
@@ -75,6 +81,7 @@ Blob prefix convention: `indexes/`
 - Source: Players section
 - Current baseline set: Carlsen, Kasparov, Nakamura, Anand, Fischer
 - No title requirement
+- ELO requirement is disabled for this source (historic games often lack ELO headers)
 
 ### Lichess Elite (planned/partial)
 
@@ -84,7 +91,7 @@ Blob prefix convention: `indexes/`
 
 - Standard chess only
 - No FEN setup starts
-- Both players ELO > 2400
+- Both players ELO > 2400 (applies to sources where ELO filtering is enabled)
 - Time control rapid or slower (base ≥ 600 seconds)
 
 ## Indexes and Critical Lookup Rule

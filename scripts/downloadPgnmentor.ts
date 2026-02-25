@@ -686,7 +686,9 @@ async function discoverPgnmentorFiles(): Promise<void> {
   console.log("=".repeat(60));
   console.log("\n✅ Download and chunking complete!");
   console.log("\nℹ️  Local source tracking updated for processed files.");
-  console.log("⚠️  Production tracking is still finalized after upload to Netlify Blobs.\n");
+  console.log(
+    "⚠️  Production tracking is still finalized after upload to Netlify Blobs.\n",
+  );
 
   // Explicit exit to ensure process terminates cleanly
   process.exit(0);
