@@ -7,7 +7,7 @@ import type { IChessGame } from "@chess-pgn/chess-pgn";
  * Determines if a game should be imported based on filtering criteria:
  * - Standard chess only (no variants)
  * - No FEN setups (must start from standard position)
- * - Both players must have rating > 2400
+ * - Optional: Both players must have rating > 2400
  * - Time control must be rapid or slower (>= 600 seconds base time)
  * - Optional: Both players must have FIDE titles (for Lichess)
  *
@@ -17,7 +17,7 @@ import type { IChessGame } from "@chess-pgn/chess-pgn";
  */
 export function shouldImportGame(
   game: IChessGame | any,
-  options?: { requireTitles?: boolean },
+  options?: { requireTitles?: boolean; requireElo?: boolean },
 ): boolean {
   // Handle both IChessGame (with getHeaders() method) and metadata objects (with .headers property)
   const header =
@@ -40,12 +40,14 @@ export function shouldImportGame(
     return false;
   }
 
-  // Both players must be > 2400 rating
-  const whiteElo = parseInt(header.WhiteElo || "0");
-  const blackElo = parseInt(header.BlackElo || "0");
+  // Optional ELO filter (enabled by default)
+  if (options?.requireElo !== false) {
+    const whiteElo = parseInt(header.WhiteElo || "0");
+    const blackElo = parseInt(header.BlackElo || "0");
 
-  if (whiteElo <= 2400 || blackElo <= 2400) {
-    return false;
+    if (whiteElo <= 2400 || blackElo <= 2400) {
+      return false;
+    }
   }
 
   // Time control must be rapid or slower (>= 600 seconds = 10 minutes)

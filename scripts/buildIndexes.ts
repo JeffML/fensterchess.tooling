@@ -35,6 +35,13 @@ interface ProcessedData {
   sourceTracking: SourceTracking;
 }
 
+type FullGameIndexChunk = GameIndexChunk & {
+  version: string;
+  chunkId: number;
+  startIdx: number;
+  endIdx: number;
+};
+
 function buildGameChunks(games: GameMetadata[]): {
   chunks: GameIndexChunk[];
   masterIndex: MasterIndex;
@@ -42,14 +49,14 @@ function buildGameChunks(games: GameMetadata[]): {
   console.log("\n📦 Building game chunks...");
 
   const totalChunks = Math.ceil(games.length / CHUNK_SIZE);
-  const chunks: GameIndexChunk[] = [];
+  const chunks: FullGameIndexChunk[] = [];
 
   for (let i = 0; i < totalChunks; i++) {
     const startIdx = i * CHUNK_SIZE;
     const endIdx = Math.min(startIdx + CHUNK_SIZE, games.length);
     const chunkGames = games.slice(startIdx, endIdx);
 
-    const chunk: GameIndexChunk = {
+    const chunk: FullGameIndexChunk = {
       version: "1.0",
       chunkId: i,
       // totalChunks removed - stored in master-index.json instead

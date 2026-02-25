@@ -104,7 +104,7 @@ async function processGames(
   sourceFile: string,
   deduplicationIndex: DeduplicationIndex,
   gameIndex: number,
-  filterOptions?: { requireTitles?: boolean },
+  filterOptions?: { requireTitles?: boolean; requireElo?: boolean },
 ): Promise<{
   games: GameMetadata[];
   nextIndex: number;
@@ -280,7 +280,7 @@ async function downloadAndProcessMasters(): Promise<ProcessedGames> {
       master.filename,
       deduplicationIndex,
       gameIndex,
-      { requireTitles: false },
+      { requireTitles: false, requireElo: false },
     );
 
     allGames.push(...games);

@@ -248,7 +248,12 @@ async function processGames(
 
       // Apply filtering (pgnmentor: no title requirement)
       // Note: shouldImportGame() handles metadata objects with .headers property
-      if (!shouldImportGame(gameMetadata, { requireTitles: false })) {
+      if (
+        !shouldImportGame(gameMetadata, {
+          requireTitles: false,
+          requireElo: false,
+        })
+      ) {
         stats.rejected++;
         continue;
       }
@@ -437,7 +442,7 @@ async function discoverPgnmentorFiles(): Promise<void> {
     fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
   }
 
-  // Load existing source tracking (production state - updated after upload)
+  // Load existing source tracking (used for incremental local runs)
   const sourceTrackingPath = path.join(
     DOWNLOAD_DIR,
     "..",
@@ -457,9 +462,9 @@ async function discoverPgnmentorFiles(): Promise<void> {
     files: {},
   };
 
-  console.log("📂 Loading production tracking (from last upload)...");
+  console.log("📂 Loading source tracking...");
   const inProductionCount = Object.keys(sourceTracking.files).length;
-  console.log(`  ✅ Files in production: ${inProductionCount}\n`);
+  console.log(`  ✅ Tracked files: ${inProductionCount}\n`);
 
   const visitDate = new Date().toISOString();
 
@@ -497,9 +502,17 @@ async function discoverPgnmentorFiles(): Promise<void> {
       } else {
         unchangedFiles.push(filename);
       }
+    } else if (currentMetadata?.etag && trackedFile.etag) {
+      // Fallback to ETag comparison when Last-Modified is unavailable
+      if (currentMetadata.etag !== trackedFile.etag) {
+        console.log(`  📥 Will process: ${filename} (etag changed)`);
+        filesToProcess.push(filename);
+      } else {
+        unchangedFiles.push(filename);
+      }
     } else {
-      // No Last-Modified data - process to be safe
-      console.log(`  📥 Will process: ${filename} (no metadata)`);
+      // Missing comparable metadata - process to be safe
+      console.log(`  📥 Will process: ${filename} (no comparable metadata)`);
       filesToProcess.push(filename);
     }
   }
@@ -519,8 +532,7 @@ async function discoverPgnmentorFiles(): Promise<void> {
   }
 
   if (filesToProcess.length === 0) {
-    console.log("\n✅ All files up to date - nothing to download");
-    console.log("   (Production tracking will be updated after upload)\n");
+    console.log("\n✅ All files up to date - nothing to download\n");
     return;
   }
 
@@ -606,6 +618,23 @@ async function discoverPgnmentorFiles(): Promise<void> {
         `     Total: ${stats.total}, Accepted: ${stats.accepted}, Rejected: ${stats.rejected}, Duplicates: ${stats.duplicates}`,
       );
 
+      // Update local tracking for this file, even if no new games were imported.
+      const currentMetadata = fileMetadataMap.get(filename);
+      sourceTracking.files[filename] = {
+        filename,
+        url,
+        lastModified: currentMetadata?.lastModified,
+        etag: currentMetadata?.etag,
+        downloadDate: new Date().toISOString(),
+        gameCount: stats.total,
+      };
+      sourceTracking.lastPageVisit = visitDate;
+      allSourceTracking.pgnmentor = sourceTracking;
+      fs.writeFileSync(
+        sourceTrackingPath,
+        JSON.stringify(allSourceTracking, null, 2),
+      );
+
       // Periodic saves and prompts
       if (fileNum % 5 === 0 || fileNum === limitedFiles.length) {
         console.log(`\n💾 Saving progress after ${fileNum} files...`);
@@ -656,9 +685,8 @@ async function discoverPgnmentorFiles(): Promise<void> {
   console.log(`Next game ID: ${nextGameId}`);
   console.log("=".repeat(60));
   console.log("\n✅ Download and chunking complete!");
-  console.log(
-    "\n⚠️  Note: Production tracking will be updated after upload to Netlify Blobs.\n",
-  );
+  console.log("\nℹ️  Local source tracking updated for processed files.");
+  console.log("⚠️  Production tracking is still finalized after upload to Netlify Blobs.\n");
 
   // Explicit exit to ensure process terminates cleanly
   process.exit(0);
