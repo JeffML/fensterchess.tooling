@@ -75,9 +75,7 @@ function buildGameChunks(games: GameMetadata[]): {
     };
 
     chunks.push(chunk);
-    console.log(
-      `  Chunk ${i}: ${chunkGames.length} games`,
-    );
+    console.log(`  Chunk ${i}: ${chunkGames.length} games`);
   }
 
   const masterIndex: MasterIndex = {
@@ -374,7 +372,6 @@ function buildGameToPlayersIndex(games: GameMetadata[]): [string, string][] {
 async function buildIndexes(): Promise<void> {
   console.log("🔨 Phase 1: Building search indexes\n");
 
-  // Check for existing chunks first (preferred), otherwise fall back to processed-games.json
   let data: ProcessedData;
   const chunkFiles = fs.existsSync(OUTPUT_DIR)
     ? fs
@@ -383,55 +380,11 @@ async function buildIndexes(): Promise<void> {
         .sort()
     : [];
 
-  if (fs.existsSync(INPUT_FILE)) {
-    // Primary path: load from processed-games.json (source of truth for game records).
-    // This ensures newly downloaded games are always picked up, even when chunks exist.
-    console.log(`📖 Reading processed games: ${INPUT_FILE}`);
-    data = JSON.parse(fs.readFileSync(INPUT_FILE, "utf-8"));
-    console.log(`  Found ${data.games.length} games`);
-
-    // Restore enrichment fields from existing chunks to avoid re-processing.
-    if (chunkFiles.length > 0) {
-      console.log(
-        `📦 Restoring enrichment from ${chunkFiles.length} existing chunks...`,
-      );
-          const enrichmentMap = new Map<string, Partial<GameMetadata>>();
-      for (const chunkFile of chunkFiles) {
-        const chunkPath = path.join(OUTPUT_DIR, chunkFile);
-        const chunk: GameIndexChunk = JSON.parse(
-          fs.readFileSync(chunkPath, "utf-8"),
-        );
-        for (const g of chunk.games) {
-          if (g.ecoJsonFen && g.hash) {
-            enrichmentMap.set(g.hash, {
-              ecoJsonFen: g.ecoJsonFen,
-              ecoJsonOpening: g.ecoJsonOpening,
-              ecoJsonEco: g.ecoJsonEco,
-              movesBack: g.movesBack,
-              ply: g.ply,
-              moves: g.moves, // already cleaned by previous enrichment
-            });
-          }
-        }
-      }
-      let restored = 0;
-      for (const g of data.games) {
-        // Use hash as the stable key (idx is per-source-file, not globally unique)
-        const enrichment = g.hash ? enrichmentMap.get(g.hash) : undefined;
-        if (enrichment) {
-          Object.assign(g, enrichment);
-          restored++;
-        }
-      }
-      console.log(
-        `  ✅ Restored enrichment for ${restored} / ${data.games.length} games\n`,
-      );
-    } else {
-      console.log();
-    }
-  } else if (chunkFiles.length > 0) {
-    // Fallback: no processed-games.json — load from chunks (legacy / post-migration).
-    console.log(`📦 Loading from ${chunkFiles.length} existing chunks (no processed-games.json)...`);
+  if (chunkFiles.length > 0) {
+    // Primary path: chunks are the source of truth.
+    // downloadPgnmentor writes new games directly into chunks, so this always
+    // reflects the full historical game set.
+    console.log(`📦 Loading from ${chunkFiles.length} existing chunks...`);
     let allGames: GameMetadata[] = [];
     for (const chunkFile of chunkFiles) {
       const chunkPath = path.join(OUTPUT_DIR, chunkFile);
@@ -441,6 +394,7 @@ async function buildIndexes(): Promise<void> {
       allGames = allGames.concat(chunk.games);
     }
     console.log(`  Found ${allGames.length} games\n`);
+
     const dedupPath = path.join(OUTPUT_DIR, "deduplication-index.json");
     const sourcePath = path.join(OUTPUT_DIR, "source-tracking.json");
     data = {
@@ -452,6 +406,11 @@ async function buildIndexes(): Promise<void> {
         ? JSON.parse(fs.readFileSync(sourcePath, "utf-8"))
         : { pgnmentor: { lastPageVisit: new Date().toISOString(), files: {} } },
     };
+  } else if (fs.existsSync(INPUT_FILE)) {
+    // Fallback: no chunks yet — load from processed-games.json (legacy initial import).
+    console.log(`📖 Reading: ${INPUT_FILE}`);
+    data = JSON.parse(fs.readFileSync(INPUT_FILE, "utf-8"));
+    console.log(`  Found ${data.games.length} games\n`);
   } else {
     console.error(`❌ No data source found. Run download step first.`);
     process.exit(1);
