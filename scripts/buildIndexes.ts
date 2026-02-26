@@ -100,6 +100,9 @@ async function enrichGamesWithEcoJson(
     openingToFen.set(opening, fen);
   }
 
+  // Reuse single ChessPGN instance to avoid per-game allocation and GC pressure
+  const chess = new ChessPGN();
+
   let matched = 0;
   let unmatched = 0;
   let skipped = 0;
@@ -151,8 +154,8 @@ async function enrichGamesWithEcoJson(
         continue;
       }
 
-      // Execute moves to build game state for lookupByMoves
-      const chess = new ChessPGN();
+      // Reset shared instance then execute moves to build game state for lookupByMoves
+      chess.reset();
       for (const move of cleanMoves) {
         const result = chess.move(move);
         if (!result) {
