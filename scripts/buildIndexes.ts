@@ -100,8 +100,13 @@ async function enrichGamesWithEcoJson(
     openingToFen.set(opening, fen);
   }
 
-  // Reuse single ChessPGN instance to avoid per-game allocation and GC pressure
-  const chess = new ChessPGN();
+  // Reuse a ChessPGN instance but recycle it every N unenriched games.
+  // V8 never shrinks array backing buffers, so after thousands of move+undo
+  // cycles the internal history buffer balloons and operations slow down.
+  // Recreating periodically lets V8 release the bloated allocation.
+  const RECYCLE_INTERVAL = 500;
+  let chess = new ChessPGN();
+  let processedCount = 0;
 
   let matched = 0;
   let unmatched = 0;
@@ -120,6 +125,12 @@ async function enrichGamesWithEcoJson(
       skipped++;
       continue;
     }
+
+    // Recycle ChessPGN instance periodically to release V8 buffer bloat
+    if (processedCount > 0 && processedCount % RECYCLE_INTERVAL === 0) {
+      chess = new ChessPGN();
+    }
+    processedCount++;
 
     // Debug: Check first unenriched game
     if (skipped === 0 && matched === 0 && unmatched === 0) {
