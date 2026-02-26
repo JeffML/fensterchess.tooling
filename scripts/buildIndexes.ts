@@ -449,31 +449,42 @@ async function buildIndexes(): Promise<void> {
       ? path.join(latestBackup, `chunk-${chunk.chunkId}.json`)
       : null;
 
-    // Check if we can copy from backup (chunk game IDs match in-memory chunk)
-    // Compare against in-memory chunk, not the on-disk file which may already
-    // have been rewritten by a prior buildIndexes run.
+    const inMemoryIds = (chunk as FullGameIndexChunk).games.map(
+      (g: GameMetadata) => g.idx,
+    );
+
+    // Priority 1: on-disk file has the same games → leave it untouched.
+    // Since games were loaded FROM these files, this is almost always true
+    // for unchanged chunks and avoids unnecessary writes/uploads.
+    if (fs.existsSync(chunkPath)) {
+      const diskChunk = JSON.parse(fs.readFileSync(chunkPath, "utf-8"));
+      const diskIds = diskChunk.games.map((g: GameMetadata) => g.idx);
+      if (
+        diskIds.length === inMemoryIds.length &&
+        diskIds.every((id: number, i: number) => id === inMemoryIds[i])
+      ) {
+        console.log(`  ✓  chunk-${chunk.chunkId}.json unchanged (skipped)`);
+        continue;
+      }
+    }
+
+    // Priority 2: backup has the same games → copy it (preserves prior enrichment).
     if (backupChunkPath && fs.existsSync(backupChunkPath)) {
       const backupChunk = JSON.parse(fs.readFileSync(backupChunkPath, "utf-8"));
-
-      const backupGameIds = backupChunk.games.map((g: GameMetadata) => g.idx);
-      const currentGameIds = (chunk as FullGameIndexChunk).games.map(
-        (g: GameMetadata) => g.idx,
-      );
-
+      const backupIds = backupChunk.games.map((g: GameMetadata) => g.idx);
       if (
-        backupGameIds.length === currentGameIds.length &&
-        backupGameIds.every((id: number, i: number) => id === currentGameIds[i])
+        backupIds.length === inMemoryIds.length &&
+        backupIds.every((id: number, i: number) => id === inMemoryIds[i])
       ) {
-        // Game set is identical — copy enriched backup instead of rewriting
         fs.copyFileSync(backupChunkPath, chunkPath);
         console.log(`  📋 Copied chunk-${chunk.chunkId}.json from backup`);
         continue;
       }
     }
 
-    // New or modified chunk - write it
+    // Priority 3: new or genuinely modified chunk — write from in-memory.
     fs.writeFileSync(chunkPath, JSON.stringify(chunk, null, 2));
-    console.log(`  ✅ chunk-${chunk.chunkId}.json`);
+    console.log(`  ✅ chunk-${chunk.chunkId}.json (written)`);
   }
 
   // Master index
