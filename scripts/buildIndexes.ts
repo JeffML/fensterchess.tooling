@@ -449,25 +449,22 @@ async function buildIndexes(): Promise<void> {
       ? path.join(latestBackup, `chunk-${chunk.chunkId}.json`)
       : null;
 
-    // Check if we can copy from backup (chunk exists and hasn't changed)
-    if (
-      backupChunkPath &&
-      fs.existsSync(backupChunkPath) &&
-      fs.existsSync(chunkPath)
-    ) {
-      // Load both to compare game IDs
+    // Check if we can copy from backup (chunk game IDs match in-memory chunk)
+    // Compare against in-memory chunk, not the on-disk file which may already
+    // have been rewritten by a prior buildIndexes run.
+    if (backupChunkPath && fs.existsSync(backupChunkPath)) {
       const backupChunk = JSON.parse(fs.readFileSync(backupChunkPath, "utf-8"));
-      const currentChunk = JSON.parse(fs.readFileSync(chunkPath, "utf-8"));
 
-      // If game IDs match, copy from backup (already enriched)
       const backupGameIds = backupChunk.games.map((g: GameMetadata) => g.idx);
-      const currentGameIds = currentChunk.games.map((g: GameMetadata) => g.idx);
+      const currentGameIds = (chunk as FullGameIndexChunk).games.map(
+        (g: GameMetadata) => g.idx,
+      );
 
       if (
         backupGameIds.length === currentGameIds.length &&
         backupGameIds.every((id: number, i: number) => id === currentGameIds[i])
       ) {
-        // Copy from backup (already enriched and in correct format)
+        // Game set is identical — copy enriched backup instead of rewriting
         fs.copyFileSync(backupChunkPath, chunkPath);
         console.log(`  📋 Copied chunk-${chunk.chunkId}.json from backup`);
         continue;
