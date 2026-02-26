@@ -335,6 +335,26 @@
         output.scrollTop = output.scrollHeight;
       }
 
+      function resetDownstreamSteps() {
+        // Clear steps 2-4 completion state and output when step 1 reruns
+        for (let step = 2; step <= 4; step++) {
+          stepCompleted[`step${step}`] = false;
+          const card = document.getElementById(`step${step}-card`);
+          const statusIcon = document.getElementById(`step${step}-status`);
+          const output = document.getElementById(`step${step}-output`);
+          if (card) {
+            card.classList.remove("completed", "running", "error");
+            card.classList.add("opacity-50");
+          }
+          if (statusIcon) statusIcon.textContent = "⏸️";
+          if (output) { output.innerHTML = ""; output.classList.add("hidden"); }
+          const btn = document.getElementById(`step${step}-btn`);
+          const previewBtn = document.getElementById(`step${step}-preview-btn`);
+          if (btn) btn.disabled = true;
+          if (previewBtn) previewBtn.disabled = true;
+        }
+      }
+
       async function runStep1() {
         const btn = document.getElementById("step1-btn");
         const output = document.getElementById("step1-output");
@@ -342,6 +362,7 @@
 
         btn.disabled = true;
         output.innerHTML = "";
+        resetDownstreamSteps();
         setStepStatus(1, "running");
 
         try {
