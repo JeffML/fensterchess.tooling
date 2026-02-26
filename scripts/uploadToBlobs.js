@@ -92,7 +92,9 @@ async function uploadToBlobs() {
       // New file
       newFiles.push({ filename, size: localSize, key: blobKey });
     } else {
-      // File exists - compare content to detect modifications
+      // File exists - compare content to detect modifications.
+      // For chunk files, use semantic comparison (game count + ID range) to avoid
+      // false positives from JSON formatting differences between runs.
       const localContent = fs.readFileSync(filepath, "utf-8");
       const remoteContent = await store.get(blobKey, { type: "text" });
       const remoteSize = remoteContent
@@ -101,8 +103,23 @@ async function uploadToBlobs() {
 
       totalRemoteSize += remoteSize;
 
-      if (localContent !== remoteContent) {
-        // Content differs - modified
+      let isDifferent;
+      if (filename.startsWith("chunk-") && remoteContent) {
+        // Semantic comparison: same game set = unchanged.
+        // Use count + first/last hash (matches buildIndexes fingerprint).
+        const localChunk = JSON.parse(localContent);
+        const remoteChunk = JSON.parse(remoteContent);
+        const lg = localChunk.games ?? [];
+        const rg = remoteChunk.games ?? [];
+        isDifferent =
+          lg.length !== rg.length ||
+          lg[0]?.hash !== rg[0]?.hash ||
+          lg[lg.length - 1]?.hash !== rg[rg.length - 1]?.hash;
+      } else {
+        isDifferent = localContent !== remoteContent;
+      }
+
+      if (isDifferent) {
         modifiedFiles.push({
           filename,
           localSize,
@@ -111,7 +128,6 @@ async function uploadToBlobs() {
           sizeDiff: localSize - remoteSize,
         });
       } else {
-        // Same content - unchanged
         unchangedFiles.push({ filename, size: localSize, key: blobKey });
       }
     }

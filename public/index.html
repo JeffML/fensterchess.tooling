@@ -347,7 +347,10 @@
             card.classList.add("opacity-50");
           }
           if (statusIcon) statusIcon.textContent = "⏸️";
-          if (output) { output.innerHTML = ""; output.classList.add("hidden"); }
+          if (output) {
+            output.innerHTML = "";
+            output.classList.add("hidden");
+          }
           const btn = document.getElementById(`step${step}-btn`);
           const previewBtn = document.getElementById(`step${step}-preview-btn`);
           if (btn) btn.disabled = true;

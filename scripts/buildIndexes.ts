@@ -42,11 +42,21 @@ type FullGameIndexChunk = GameIndexChunk & {
   endIdx: number;
 };
 
+function chunkFingerprint(games: GameMetadata[]): string {
+  // Stable identity: count + first hash + last hash (hash-sorted order)
+  if (games.length === 0) return "empty";
+  return `${games.length}|${games[0].hash}|${games[games.length - 1].hash}`;
+}
+
 function buildGameChunks(games: GameMetadata[]): {
   chunks: GameIndexChunk[];
   masterIndex: MasterIndex;
 } {
   console.log("\n📦 Building game chunks...");
+
+  // Sort by hash for stable, deterministic chunk boundaries.
+  // New games always insert at their hash position; earlier chunks are unaffected.
+  games.sort((a, b) => (a.hash < b.hash ? -1 : a.hash > b.hash ? 1 : 0));
 
   const totalChunks = Math.ceil(games.length / CHUNK_SIZE);
   const chunks: FullGameIndexChunk[] = [];
@@ -59,7 +69,6 @@ function buildGameChunks(games: GameMetadata[]): {
     const chunk: FullGameIndexChunk = {
       version: "1.0",
       chunkId: i,
-      // totalChunks removed - stored in master-index.json instead
       startIdx,
       endIdx,
       games: chunkGames,
@@ -67,7 +76,7 @@ function buildGameChunks(games: GameMetadata[]): {
 
     chunks.push(chunk);
     console.log(
-      `  Chunk ${i}: ${chunkGames.length} games (idx ${startIdx}-${endIdx - 1})`,
+      `  Chunk ${i}: ${chunkGames.length} games`,
     );
   }
 
@@ -374,11 +383,56 @@ async function buildIndexes(): Promise<void> {
         .sort()
     : [];
 
-  if (chunkFiles.length > 0) {
-    // Load from existing chunks
-    console.log(`📦 Loading from ${chunkFiles.length} existing chunks...`);
-    let allGames: GameMetadata[] = [];
+  if (fs.existsSync(INPUT_FILE)) {
+    // Primary path: load from processed-games.json (source of truth for game records).
+    // This ensures newly downloaded games are always picked up, even when chunks exist.
+    console.log(`📖 Reading processed games: ${INPUT_FILE}`);
+    data = JSON.parse(fs.readFileSync(INPUT_FILE, "utf-8"));
+    console.log(`  Found ${data.games.length} games`);
 
+    // Restore enrichment fields from existing chunks to avoid re-processing.
+    if (chunkFiles.length > 0) {
+      console.log(
+        `📦 Restoring enrichment from ${chunkFiles.length} existing chunks...`,
+      );
+          const enrichmentMap = new Map<string, Partial<GameMetadata>>();
+      for (const chunkFile of chunkFiles) {
+        const chunkPath = path.join(OUTPUT_DIR, chunkFile);
+        const chunk: GameIndexChunk = JSON.parse(
+          fs.readFileSync(chunkPath, "utf-8"),
+        );
+        for (const g of chunk.games) {
+          if (g.ecoJsonFen && g.hash) {
+            enrichmentMap.set(g.hash, {
+              ecoJsonFen: g.ecoJsonFen,
+              ecoJsonOpening: g.ecoJsonOpening,
+              ecoJsonEco: g.ecoJsonEco,
+              movesBack: g.movesBack,
+              ply: g.ply,
+              moves: g.moves, // already cleaned by previous enrichment
+            });
+          }
+        }
+      }
+      let restored = 0;
+      for (const g of data.games) {
+        // Use hash as the stable key (idx is per-source-file, not globally unique)
+        const enrichment = g.hash ? enrichmentMap.get(g.hash) : undefined;
+        if (enrichment) {
+          Object.assign(g, enrichment);
+          restored++;
+        }
+      }
+      console.log(
+        `  ✅ Restored enrichment for ${restored} / ${data.games.length} games\n`,
+      );
+    } else {
+      console.log();
+    }
+  } else if (chunkFiles.length > 0) {
+    // Fallback: no processed-games.json — load from chunks (legacy / post-migration).
+    console.log(`📦 Loading from ${chunkFiles.length} existing chunks (no processed-games.json)...`);
+    let allGames: GameMetadata[] = [];
     for (const chunkFile of chunkFiles) {
       const chunkPath = path.join(OUTPUT_DIR, chunkFile);
       const chunk: GameIndexChunk = JSON.parse(
@@ -386,13 +440,9 @@ async function buildIndexes(): Promise<void> {
       );
       allGames = allGames.concat(chunk.games);
     }
-
     console.log(`  Found ${allGames.length} games\n`);
-
-    // Load deduplication index and source tracking if they exist
     const dedupPath = path.join(OUTPUT_DIR, "deduplication-index.json");
     const sourcePath = path.join(OUTPUT_DIR, "source-tracking.json");
-
     data = {
       games: allGames,
       deduplicationIndex: fs.existsSync(dedupPath)
@@ -403,10 +453,8 @@ async function buildIndexes(): Promise<void> {
         : { pgnmentor: { lastPageVisit: new Date().toISOString(), files: {} } },
     };
   } else {
-    // Fall back to processed-games.json (legacy)
-    console.log(`📖 Reading: ${INPUT_FILE}`);
-    data = JSON.parse(fs.readFileSync(INPUT_FILE, "utf-8"));
-    console.log(`  Found ${data.games.length} games\n`);
+    console.error(`❌ No data source found. Run download step first.`);
+    process.exit(1);
   }
 
   // Load eco.json opening book
@@ -460,20 +508,16 @@ async function buildIndexes(): Promise<void> {
       ? path.join(latestBackup, `chunk-${chunk.chunkId}.json`)
       : null;
 
-    const inMemoryIds = (chunk as FullGameIndexChunk).games.map(
-      (g: GameMetadata) => g.idx,
+    const inMemoryFingerprint = chunkFingerprint(
+      (chunk as FullGameIndexChunk).games,
     );
 
     // Priority 1: on-disk file has the same games → leave it untouched.
-    // Since games were loaded FROM these files, this is almost always true
-    // for unchanged chunks and avoids unnecessary writes/uploads.
+    // Use hash fingerprint (count + first/last hash) — stable regardless of
+    // idx values or JSON formatting differences.
     if (fs.existsSync(chunkPath)) {
       const diskChunk = JSON.parse(fs.readFileSync(chunkPath, "utf-8"));
-      const diskIds = diskChunk.games.map((g: GameMetadata) => g.idx);
-      if (
-        diskIds.length === inMemoryIds.length &&
-        diskIds.every((id: number, i: number) => id === inMemoryIds[i])
-      ) {
+      if (chunkFingerprint(diskChunk.games) === inMemoryFingerprint) {
         console.log(`  ✓  chunk-${chunk.chunkId}.json unchanged (skipped)`);
         continue;
       }
@@ -482,11 +526,7 @@ async function buildIndexes(): Promise<void> {
     // Priority 2: backup has the same games → copy it (preserves prior enrichment).
     if (backupChunkPath && fs.existsSync(backupChunkPath)) {
       const backupChunk = JSON.parse(fs.readFileSync(backupChunkPath, "utf-8"));
-      const backupIds = backupChunk.games.map((g: GameMetadata) => g.idx);
-      if (
-        backupIds.length === inMemoryIds.length &&
-        backupIds.every((id: number, i: number) => id === inMemoryIds[i])
-      ) {
+      if (chunkFingerprint(backupChunk.games) === inMemoryFingerprint) {
         fs.copyFileSync(backupChunkPath, chunkPath);
         console.log(`  📋 Copied chunk-${chunk.chunkId}.json from backup`);
         continue;
