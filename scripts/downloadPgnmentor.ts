@@ -152,30 +152,53 @@ async function batchCheckFileMetadata(
   return results;
 }
 
-async function downloadFile(url: string, outputPath: string): Promise<boolean> {
-  try {
-    console.log(`  Downloading: ${url}`);
+async function downloadFile(
+  url: string,
+  outputPath: string,
+  retries = 3,
+): Promise<boolean> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      if (attempt > 1) {
+        const delay = attempt * 2000;
+        console.log(`  ⏳ Retry ${attempt}/${retries} after ${delay / 1000}s...`);
+        await new Promise((r) => setTimeout(r, delay));
+      } else {
+        console.log(`  Downloading: ${url}`);
+      }
 
-    const response = await fetch(url, {
-      headers: { "User-Agent": USER_AGENT },
-    });
+      const response = await fetch(url, {
+        headers: { "User-Agent": USER_AGENT },
+      });
 
-    if (!response.ok) {
-      console.error(`  ❌ HTTP ${response.status}: ${response.statusText}`);
-      return false;
+      if (!response.ok) {
+        console.error(`  ❌ HTTP ${response.status}: ${response.statusText}`);
+        return false; // HTTP errors are not transient — don't retry
+      }
+
+      const buffer = await response.arrayBuffer();
+      fs.writeFileSync(outputPath, Buffer.from(buffer));
+
+      console.log(
+        `  ✅ Downloaded: ${(buffer.byteLength / 1024 / 1024).toFixed(2)} MB`,
+      );
+      return true;
+    } catch (error: any) {
+      const isTransient =
+        error?.cause?.code === "ECONNRESET" ||
+        error?.cause?.code === "ECONNREFUSED" ||
+        error?.cause?.code === "ETIMEDOUT" ||
+        error?.code === "ECONNRESET";
+
+      if (isTransient && attempt < retries) {
+        console.error(`  ⚠️  Network error (${error?.cause?.code ?? error?.code}), will retry...`);
+      } else {
+        console.error(`  ❌ Download failed:`, error);
+        return false;
+      }
     }
-
-    const buffer = await response.arrayBuffer();
-    fs.writeFileSync(outputPath, Buffer.from(buffer));
-
-    console.log(
-      `  ✅ Downloaded: ${(buffer.byteLength / 1024 / 1024).toFixed(2)} MB`,
-    );
-    return true;
-  } catch (error) {
-    console.error(`  ❌ Download failed:`, error);
-    return false;
   }
+  return false;
 }
 
 function extractZip(zipPath: string): string | null {
@@ -584,7 +607,12 @@ async function discoverPgnmentorFiles(): Promise<void> {
       const zipPath = path.join(DOWNLOAD_DIR, filename);
 
       console.log(`  📥 Downloading...`);
-      await downloadFile(url, zipPath);
+      const downloaded = await downloadFile(url, zipPath);
+
+      if (!downloaded) {
+        console.error(`  ❌ Skipping ${filename} due to download failure`);
+        continue;
+      }
 
       // Extract
       console.log(`  📦 Extracting...`);
