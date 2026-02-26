@@ -77,8 +77,19 @@ async function uploadToBlobs() {
   const newFiles = [];
   const modifiedFiles = [];
   const unchangedFiles = [];
+  const orphanedBlobs = []; // blobs in production with no local file
   let totalLocalSize = 0;
   let totalRemoteSize = 0;
+
+  // Local filenames as a set for orphan detection
+  const localFilenames = new Set(files.map((f) => `indexes/${f}`));
+
+  // Collect orphaned blobs (production has them, local doesn't)
+  for (const blob of blobs) {
+    if (!localFilenames.has(blob.key)) {
+      orphanedBlobs.push({ key: blob.key, filename: path.basename(blob.key) });
+    }
+  }
 
   for (const filename of files) {
     const filepath = path.join(INDEXES_DIR, filename);
@@ -200,6 +211,13 @@ async function uploadToBlobs() {
     });
   }
 
+  if (orphanedBlobs.length > 0) {
+    console.log(`\n🗑️  Orphaned blobs to delete (${orphanedBlobs.length}):`);
+    orphanedBlobs.forEach((b) => {
+      console.log(`   - ${b.filename}`);
+    });
+  }
+
   if (unchangedFiles.length > 0) {
     console.log(`\n✓ Unchanged files (${unchangedFiles.length}):`);
     unchangedFiles.forEach((f) => {
@@ -214,7 +232,7 @@ async function uploadToBlobs() {
     `Local size:        ${(totalLocalSize / 1024 / 1024).toFixed(2)} MB`,
   );
   console.log(
-    `Changes:           ${newFiles.length} new, ${modifiedFiles.length} modified, ${unchangedFiles.length} unchanged`,
+    `Changes:           ${newFiles.length} new, ${modifiedFiles.length} modified, ${unchangedFiles.length} unchanged, ${orphanedBlobs.length} to delete`,
   );
   if (localTotalGames !== null) {
     console.log(
@@ -230,9 +248,9 @@ async function uploadToBlobs() {
   }
   console.log("=".repeat(60));
 
-  // If nothing to upload, exit
-  if (newFiles.length === 0 && modifiedFiles.length === 0) {
-    console.log("\n✓ All files are up to date. Nothing to upload.");
+  // If nothing to upload or delete, exit
+  if (newFiles.length === 0 && modifiedFiles.length === 0 && orphanedBlobs.length === 0) {
+    console.log("\n✓ All files are up to date. Nothing to upload or delete.");
     return;
   }
 
@@ -275,6 +293,20 @@ async function uploadToBlobs() {
         error.message,
       );
       process.exit(1);
+    }
+  }
+
+  // Delete orphaned blobs
+  if (orphanedBlobs.length > 0) {
+    console.log("\n🗑️  Deleting orphaned blobs...\n");
+    for (const blob of orphanedBlobs) {
+      try {
+        await store.delete(blob.key);
+        console.log(`   ✅ Deleted ${blob.filename}`);
+      } catch (error) {
+        console.error(`   ❌ Failed to delete ${blob.filename}:`, error.message);
+        // Non-fatal: log and continue
+      }
     }
   }
 
