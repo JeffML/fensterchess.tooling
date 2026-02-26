@@ -48,13 +48,14 @@ Tracking behavior:
 
 ## Core Scripts
 
-- `scripts/downloadPgnmentor.ts` - Incremental pgnmentor downloader
-- `scripts/buildIndexes.ts` - Rebuilds query indexes from chunks
+- `scripts/downloadPgnmentor.ts` - Incremental pgnmentor downloader; **sole authority on chunk assignment** via `saveGamesToChunks()`
+- `scripts/buildIndexes.ts` - Enriches games with eco.json data in-place; rebuilds query indexes; **does NOT rechunk**
 - `scripts/backupFromBlobs.ts` - Pulls current production blobs to timestamped backup folder
-- `scripts/uploadToBlobs.js` - Diff-based upload with confirmation prompt
+- `scripts/uploadToBlobs.js` - Diff-based upload with confirmation prompt; deletes orphan blobs in production
 - `scripts/filterGame.ts` - Quality filtering logic
 - `scripts/hashGame.ts` - Deterministic deduplication hash
 - `scripts/types.ts` - Type definitions
+- `scripts/rechunkByHash.ts` - **One-time repair script only.** Deduplicates by hash, sorts by hash, and re-slices into clean chunks. Run only when chunks contain duplicate games. Running it routinely will reshuffle all chunk boundaries.
 
 ## Environment & Netlify Blobs
 
@@ -113,20 +114,32 @@ Indexes live in `data/indexes/` and include:
 
 When querying `opening-by-fen.json`, use `ecoJsonFen` (ancestor opening FEN), not arbitrary current position FEN.
 
-## Chunking and Indelible Data
+## Game Identity
 
-Chunk rule:
+- **`hash`** — SHA-256 of `event|white|black|date|round`. Globally unique per game. The true identity key.
+- **`idx`** — Per-source-file sequential integer. **NOT globally unique** across all sources (e.g. 66,664 records but only ~45,209 unique `idx` values). Do not use `idx` for deduplication or cross-chunk identity.
 
-- `chunkId = Math.floor(gameId / 4000)`
+## Chunking Model
 
-Do not alter these once written:
+Chunks are **insertion-order, append-only**. The authoritative chunk assigner is `saveGamesToChunks()` in `downloadPgnmentor.ts`:
 
-1. Game IDs (`idx`)
-2. Game hashes
-3. Existing chunk assignments
-4. Source provenance fields
+- New games are appended to the last in-progress chunk
+- When a chunk reaches 4,000 games, a new chunk is started
+- `CHUNK_SIZE = 4000` (defined in both `buildIndexes.ts` and `downloadPgnmentor.ts`)
+- Chunk files written by the downloader contain `{ games: [...] }` only — no `chunkId` field in the JSON. `buildIndexes.ts` derives the chunkId from the filename.
+- **`buildIndexes.ts` does NOT rechunk.** It loads each chunk preserving its membership, enriches games in-place with eco.json data, and rewrites only chunks that gained new `ecoJsonFen` values. Unchanged chunks are skipped.
 
-Rebuildable/derived data includes query indexes and opening enrichment fields.
+**Do not alter once written:**
+
+1. Game hashes
+2. Existing chunk membership (which games are in which chunk file)
+3. Source provenance fields
+
+**Rebuildable/derived data:** query indexes, opening enrichment fields (`ecoJsonFen`, `ecoJsonOpening`, `ecoJsonEco`, `movesBack`), `master-index.json`.
+
+### Why not hash-sorted chunking?
+
+Hash-sorted sequential slicing causes **cascading boundary shifts**: adding any new games anywhere in the hash space moves games across chunk boundaries throughout the entire dataset, causing every chunk to be re-uploaded. Since there is no fixed upper bound on the number of games, consistent hashing is also not viable. Insertion-order chunking is the only stable model.
 
 ## Operational Commands
 
@@ -166,8 +179,11 @@ npm run type-check
 
 ## Common Pitfalls
 
-1. Querying opening index by the wrong FEN (must use `ecoJsonFen` key)
-2. Rebalancing chunks or rewriting IDs (breaks stable references)
-3. Running backup/upload locally without `NETLIFY_AUTH_TOKEN` + `SITE_ID`
-4. Treating direct scripts as default operator path instead of the workflow UI
-5. Forgetting backup before production upload
+1. Querying opening index by the wrong FEN (must use `ecoJsonFen` key, not arbitrary current position FEN)
+2. Running `rechunkByHash.ts` routinely — it reshuffles all chunk boundaries; use only for one-time repair when duplicates exist
+3. Calling `buildGameChunks()` from `buildIndexes` — this hash-sorts and re-slices, destroying insertion-order boundaries; `buildIndexes` must never rechunk
+4. Using `idx` for game identity or deduplication — it is per-source-file sequential and not globally unique; use `hash` instead
+5. Using `processed-games.json` as the primary data source — chunks are the source of truth; `processed-games.json` is a legacy fallback only for the very first import when no chunks exist yet
+6. Running backup/upload locally without `NETLIFY_AUTH_TOKEN` + `SITE_ID`
+7. Treating direct scripts as default operator path instead of the workflow UI
+8. Forgetting backup before production upload
