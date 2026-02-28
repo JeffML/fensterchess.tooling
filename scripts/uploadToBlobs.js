@@ -249,7 +249,11 @@ async function uploadToBlobs() {
   console.log("=".repeat(60));
 
   // If nothing to upload or delete, exit
-  if (newFiles.length === 0 && modifiedFiles.length === 0 && orphanedBlobs.length === 0) {
+  if (
+    newFiles.length === 0 &&
+    modifiedFiles.length === 0 &&
+    orphanedBlobs.length === 0
+  ) {
     console.log("\n✓ All files are up to date. Nothing to upload or delete.");
     return;
   }
@@ -304,7 +308,10 @@ async function uploadToBlobs() {
         await store.delete(blob.key);
         console.log(`   ✅ Deleted ${blob.filename}`);
       } catch (error) {
-        console.error(`   ❌ Failed to delete ${blob.filename}:`, error.message);
+        console.error(
+          `   ❌ Failed to delete ${blob.filename}:`,
+          error.message,
+        );
         // Non-fatal: log and continue
       }
     }

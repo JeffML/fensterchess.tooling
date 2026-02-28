@@ -14,6 +14,8 @@
         overflow-y: auto;
         background: #1e1e1e;
         color: #d4d4d4;
+        white-space: pre-wrap;
+        word-break: break-word;
       }
       .output-log .stdout {
         color: #d4d4d4;
@@ -192,14 +194,25 @@
             <span id="step3-status" class="text-2xl">⏸️</span>
           </div>
 
-          <button
-            id="step3-btn"
-            onclick="runStep3()"
-            disabled
-            class="px-4 py-2 bg-green-500 text-white rounded font-medium disabled:bg-gray-300 disabled:cursor-not-allowed"
-          >
-            ▶️ Run Backup
-          </button>
+          <div class="flex gap-2">
+            <button
+              id="step3-btn"
+              onclick="runStep3()"
+              disabled
+              class="px-4 py-2 bg-green-500 text-white rounded font-medium disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              ▶️ Run Backup
+            </button>
+            <button
+              id="step3-skip-btn"
+              onclick="skipStep3()"
+              disabled
+              class="px-4 py-2 bg-gray-400 text-white rounded font-medium disabled:bg-gray-300 disabled:cursor-not-allowed"
+              title="Skip if you just restored from a backup"
+            >
+              ⏭️ Skip
+            </button>
+          </div>
 
           <div
             id="step3-output"
@@ -251,6 +264,49 @@
         </div>
       </div>
 
+      <!-- Restore from Backup -->
+      <div
+        class="bg-amber-50 border-2 border-amber-300 rounded-lg shadow-md p-6 mt-6"
+      >
+        <div class="flex items-start justify-between mb-4">
+          <div>
+            <h3 class="text-xl font-bold text-gray-800">
+              🔄 Restore from Backup
+            </h3>
+            <p class="text-gray-600 text-sm mt-1">
+              Replaces <strong>all local</strong> data/indexes files with a
+              chosen backup. Run <em>Build Indexes</em> after restoring.
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-end gap-3 flex-wrap">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1"
+              >Select backup:</label
+            >
+            <select
+              id="restore-select"
+              class="border border-gray-300 rounded px-3 py-2 text-sm bg-white min-w-64"
+            >
+              <option value="">Loading backups...</option>
+            </select>
+          </div>
+          <button
+            id="restore-btn"
+            onclick="runRestore()"
+            class="px-4 py-2 bg-amber-500 text-white rounded hover:bg-amber-600 font-medium disabled:bg-gray-300 disabled:cursor-not-allowed"
+          >
+            ♻️ Restore
+          </button>
+        </div>
+
+        <div
+          id="restore-output"
+          class="output-log hidden mt-4 p-4 rounded"
+        ></div>
+      </div>
+
       <!-- Footer -->
       <div class="mt-8 text-center text-gray-500 text-sm">
         <p>Fensterchess Tooling v0.1.0</p>
@@ -265,10 +321,99 @@
         step3: false,
         step4: false,
       };
+      let saveTimer = null;
+
+      function saveState() {
+        const state = {
+          stepCompleted,
+          steps: {},
+          restoreOutput: "",
+          restoreOutputHidden: true,
+        };
+        for (let i = 1; i <= 4; i++) {
+          const card = document.getElementById(`step${i}-card`);
+          const icon = document.getElementById(`step${i}-status`);
+          const output = document.getElementById(`step${i}-output`);
+          state.steps[i] = {
+            completed: card?.classList.contains("completed") ?? false,
+            error: card?.classList.contains("error") ?? false,
+            dim: card?.classList.contains("opacity-50") ?? false,
+            icon: icon?.textContent ?? "⏸️",
+            output: output?.innerHTML ?? "",
+            outputHidden: output?.classList.contains("hidden") ?? true,
+          };
+        }
+        const ro = document.getElementById("restore-output");
+        state.restoreOutput = ro?.innerHTML ?? "";
+        state.restoreOutputHidden = ro?.classList.contains("hidden") ?? true;
+        sessionStorage.setItem("workflowState", JSON.stringify(state));
+      }
+
+      function debouncedSave() {
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(saveState, 200);
+      }
+
+      function restoreState() {
+        const saved = sessionStorage.getItem("workflowState");
+        if (!saved) return;
+        try {
+          const state = JSON.parse(saved);
+          stepCompleted = { ...stepCompleted, ...(state.stepCompleted || {}) };
+
+          for (let i = 1; i <= 4; i++) {
+            const s = state.steps?.[i];
+            if (!s) continue;
+            const card = document.getElementById(`step${i}-card`);
+            const icon = document.getElementById(`step${i}-status`);
+            const output = document.getElementById(`step${i}-output`);
+            const btn = document.getElementById(`step${i}-btn`);
+            const skipBtn = document.getElementById(`step${i}-skip-btn`);
+            const previewBtn = document.getElementById(`step${i}-preview-btn`);
+
+            if (card) {
+              card.classList.remove(
+                "completed",
+                "running",
+                "error",
+                "opacity-50",
+              );
+              if (s.completed) card.classList.add("completed");
+              if (s.error) card.classList.add("error");
+              if (s.dim) card.classList.add("opacity-50");
+            }
+            if (icon) icon.textContent = s.icon;
+            if (output) {
+              output.innerHTML = s.output;
+              if (s.outputHidden) output.classList.add("hidden");
+              else output.classList.remove("hidden");
+            }
+            // Re-enable buttons for steps whose prerequisite is done
+            const prereqDone = i === 1 || stepCompleted[`step${i - 1}`];
+            if (prereqDone) {
+              if (btn) btn.disabled = false;
+              if (skipBtn) skipBtn.disabled = false;
+              if (previewBtn) previewBtn.disabled = false;
+            }
+          }
+
+          const ro = document.getElementById("restore-output");
+          if (ro) {
+            ro.innerHTML = state.restoreOutput || "";
+            if (state.restoreOutputHidden) ro.classList.add("hidden");
+            else ro.classList.remove("hidden");
+          }
+        } catch (e) {
+          console.warn("Failed to restore workflow state:", e);
+          sessionStorage.removeItem("workflowState");
+        }
+      }
 
       // Load status on page load
       window.addEventListener("DOMContentLoaded", () => {
+        restoreState();
         loadStatus();
+        loadBackups();
       });
 
       async function loadStatus() {
@@ -307,6 +452,7 @@
           card.classList.add("error");
           statusIcon.textContent = "❌";
         }
+        saveState();
       }
 
       function enableNextStep(currentStep) {
@@ -314,12 +460,16 @@
         if (nextStep <= 4) {
           const nextCard = document.getElementById(`step${nextStep}-card`);
           const nextBtn = document.getElementById(`step${nextStep}-btn`);
+          const nextSkipBtn = document.getElementById(
+            `step${nextStep}-skip-btn`,
+          );
           const nextPreviewBtn = document.getElementById(
             `step${nextStep}-preview-btn`,
           );
 
           nextCard.classList.remove("opacity-50");
           if (nextBtn) nextBtn.disabled = false;
+          if (nextSkipBtn) nextSkipBtn.disabled = false;
           if (nextPreviewBtn) nextPreviewBtn.disabled = false;
         }
       }
@@ -333,6 +483,7 @@
         line.textContent = text;
         output.appendChild(line);
         output.scrollTop = output.scrollHeight;
+        debouncedSave();
       }
 
       function resetDownstreamSteps() {
@@ -352,16 +503,21 @@
             output.classList.add("hidden");
           }
           const btn = document.getElementById(`step${step}-btn`);
+          const skipBtn = document.getElementById(`step${step}-skip-btn`);
           const previewBtn = document.getElementById(`step${step}-preview-btn`);
           if (btn) btn.disabled = true;
+          if (skipBtn) skipBtn.disabled = true;
           if (previewBtn) previewBtn.disabled = true;
         }
+        saveState();
       }
 
       async function runStep1() {
         const btn = document.getElementById("step1-btn");
         const output = document.getElementById("step1-output");
-        const maxFiles = document.getElementById("max-files-input").value;
+        const rawMax = document.getElementById("max-files-input").value.trim();
+        const maxFiles =
+          rawMax !== "" && parseInt(rawMax) > 0 ? parseInt(rawMax) : null;
 
         btn.disabled = true;
         output.innerHTML = "";
@@ -369,7 +525,7 @@
         setStepStatus(1, "running");
 
         try {
-          const body = maxFiles ? { maxFiles: parseInt(maxFiles) } : {};
+          const body = maxFiles ? { maxFiles } : {};
           const res = await fetch("/api/download", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -452,6 +608,12 @@
         } finally {
           btn.disabled = false;
         }
+      }
+
+      function skipStep3() {
+        setStepStatus(3, "success");
+        document.getElementById("step3-output").classList.remove("hidden");
+        appendOutput(3, "⏭️ Backup skipped.", "stdout");
       }
 
       async function runStep3() {
@@ -538,6 +700,103 @@
           }
         } catch (error) {
           appendOutput(4, `❌ Error: ${error.message}`, "error");
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      async function loadBackups() {
+        const select = document.getElementById("restore-select");
+        try {
+          const res = await fetch("/api/backups");
+          const data = await res.json();
+          if (!data.backups || data.backups.length === 0) {
+            select.innerHTML = '<option value="">No backups available</option>';
+            return;
+          }
+          select.innerHTML = data.backups
+            .map(
+              (b) =>
+                `<option value="${b.id}">${b.id} — ${b.chunkCount} chunks, ${b.totalGames.toLocaleString()} games</option>`,
+            )
+            .join("");
+        } catch (e) {
+          select.innerHTML = '<option value="">Failed to load backups</option>';
+        }
+      }
+
+      async function runRestore() {
+        const select = document.getElementById("restore-select");
+        const backupId = select.value;
+        if (!backupId) return;
+
+        const label = select.options[select.selectedIndex].text;
+        if (
+          !confirm(
+            `⚠️ This will overwrite ALL local data/indexes with:\n\n${label}\n\nContinue?`,
+          )
+        )
+          return;
+
+        const btn = document.getElementById("restore-btn");
+        const output = document.getElementById("restore-output");
+        btn.disabled = true;
+        output.innerHTML = "";
+        output.classList.remove("hidden");
+
+        try {
+          const res = await fetch("/api/restore", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ backupId }),
+          });
+
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value);
+            const lines = chunk
+              .split("\n")
+              .filter((l) => l.trim().startsWith("data:"));
+            for (const line of lines) {
+              const data = JSON.parse(line.substring(5));
+              if (data.type === "done") {
+                const line = document.createElement("div");
+                line.className = "success";
+                line.textContent =
+                  "\n✅ Restore complete! Run Build Indexes next.";
+                output.appendChild(line);
+                output.scrollTop = output.scrollHeight;
+                loadStatus();
+                // Reset workflow step states so user runs build-indexes fresh
+                resetDownstreamSteps();
+                const step2Card = document.getElementById("step2-card");
+                const step2Btn = document.getElementById("step2-btn");
+                if (step2Card) step2Card.classList.remove("opacity-50");
+                if (step2Btn) step2Btn.disabled = false;
+              } else if (data.type === "error") {
+                const line = document.createElement("div");
+                line.className = "error";
+                line.textContent = `❌ Error: ${data.output}`;
+                output.appendChild(line);
+                output.scrollTop = output.scrollHeight;
+              } else {
+                const line = document.createElement("div");
+                line.className = data.type;
+                line.textContent = data.output;
+                output.appendChild(line);
+                output.scrollTop = output.scrollHeight;
+              }
+            }
+          }
+        } catch (e) {
+          const line = document.createElement("div");
+          line.className = "error";
+          line.textContent = `❌ ${e.message}`;
+          output.appendChild(line);
         } finally {
           btn.disabled = false;
         }

@@ -136,7 +136,10 @@ app.post("/api/download", async (req, res) => {
   });
 
   try {
-    const env = maxFiles ? { MAX_FILES: maxFiles.toString() } : {};
+    const env =
+      maxFiles != null && maxFiles > 0
+        ? { MAX_FILES: maxFiles.toString() }
+        : {};
 
     await runCommand("npm", ["run", "download:pgnmentor"], {
       env,
@@ -304,6 +307,132 @@ app.post("/api/upload", async (req, res) => {
     res.write(
       `data: ${JSON.stringify({ type: "error", error: error.message })}\n\n`,
     );
+    res.end();
+  }
+});
+
+// List available backups with their stats
+app.get("/api/backups", (req, res) => {
+  try {
+    const backupsDir = path.join(__dirname, "..", "backups");
+    if (!fs.existsSync(backupsDir)) {
+      return res.json({ backups: [] });
+    }
+
+    const dirs = fs
+      .readdirSync(backupsDir)
+      .filter((d) => fs.statSync(path.join(backupsDir, d)).isDirectory())
+      .sort()
+      .reverse();
+
+    const backups = dirs.map((id) => {
+      const indexesDir = path.join(backupsDir, id, "indexes");
+      let chunkCount = 0;
+      let totalGames = 0;
+
+      if (fs.existsSync(indexesDir)) {
+        const files = fs.readdirSync(indexesDir);
+        const chunkFiles = files.filter(
+          (f) => f.startsWith("chunk-") && f.endsWith(".json"),
+        );
+        chunkCount = chunkFiles.length;
+        for (const f of chunkFiles) {
+          try {
+            const chunk = JSON.parse(
+              fs.readFileSync(path.join(indexesDir, f), "utf-8"),
+            );
+            totalGames += (chunk.games || []).length;
+          } catch (_) {
+            // skip unreadable chunks
+          }
+        }
+      }
+
+      return { id, chunkCount, totalGames };
+    });
+
+    res.json({ backups });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Restore local data/indexes from a backup
+app.post("/api/restore", (req, res) => {
+  const { backupId } = req.body;
+  if (!backupId) {
+    return res.status(400).json({ error: "backupId is required" });
+  }
+
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+
+  const send = (type, output) =>
+    res.write(`data: ${JSON.stringify({ type, output })}\n\n`);
+
+  try {
+    const backupIndexesDir = path.join(
+      __dirname,
+      "..",
+      "backups",
+      backupId,
+      "indexes",
+    );
+    const localIndexesDir = path.join(__dirname, "..", "data", "indexes");
+
+    if (!fs.existsSync(backupIndexesDir)) {
+      send("error", `Backup not found: ${backupId}`);
+      res.end();
+      return;
+    }
+
+    const files = fs
+      .readdirSync(backupIndexesDir)
+      .filter((f) => f.endsWith(".json"));
+
+    if (!fs.existsSync(localIndexesDir)) {
+      fs.mkdirSync(localIndexesDir, { recursive: true });
+    }
+
+    send(
+      "stdout",
+      `Restoring ${files.length} files from backup ${backupId}...\n`,
+    );
+
+    let copied = 0;
+    for (const f of files) {
+      const src = path.join(backupIndexesDir, f);
+      const dst = path.join(localIndexesDir, f);
+      fs.copyFileSync(src, dst);
+      copied++;
+      send("stdout", `  ✅ ${f}\n`);
+    }
+
+    // Remove any local files not in the backup (stale chunks from a bad run)
+    const localFiles = fs
+      .readdirSync(localIndexesDir)
+      .filter((f) => f.endsWith(".json"));
+    const backupSet = new Set(files);
+    let removed = 0;
+    for (const f of localFiles) {
+      if (!backupSet.has(f)) {
+        fs.unlinkSync(path.join(localIndexesDir, f));
+        removed++;
+        send("stdout", `  🗑️  Removed stale file: ${f}\n`);
+      }
+    }
+
+    send(
+      "stdout",
+      `\nRestored ${copied} files, removed ${removed} stale files.\n`,
+    );
+    res.write(`data: ${JSON.stringify({ type: "done", success: true })}\n\n`);
+    res.end();
+  } catch (error) {
+    send("error", error.message);
     res.end();
   }
 });

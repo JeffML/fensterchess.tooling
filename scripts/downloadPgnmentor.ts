@@ -161,7 +161,9 @@ async function downloadFile(
     try {
       if (attempt > 1) {
         const delay = attempt * 2000;
-        console.log(`  ⏳ Retry ${attempt}/${retries} after ${delay / 1000}s...`);
+        console.log(
+          `  ⏳ Retry ${attempt}/${retries} after ${delay / 1000}s...`,
+        );
         await new Promise((r) => setTimeout(r, delay));
       } else {
         console.log(`  Downloading: ${url}`);
@@ -191,7 +193,9 @@ async function downloadFile(
         error?.code === "ECONNRESET";
 
       if (isTransient && attempt < retries) {
-        console.error(`  ⚠️  Network error (${error?.cause?.code ?? error?.code}), will retry...`);
+        console.error(
+          `  ⚠️  Network error (${error?.cause?.code ?? error?.code}), will retry...`,
+        );
       } else {
         console.error(`  ❌ Download failed:`, error);
         return false;

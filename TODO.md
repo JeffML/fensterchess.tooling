@@ -61,6 +61,7 @@
 - [x] Add diff/summary to upload script
 - [x] Implement upload confirmation prompt
 - [ ] Add games-in-progress filter to filterGame.ts
+- [ ] **Incremental index merging**: `buildIndexes` currently rebuilds all search indexes from all chunks on every run. When production indexes are current (e.g. after a restore), only new games need to be merged in. Load existing local indexes, enrich only unenriched games, merge new game contributions into each index, write back only changed index files. Avoids full rescan of 45K+ games when only a few hundred new games were added.
 
 ### Testing & Validation
 

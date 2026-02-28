@@ -104,6 +104,7 @@ Indexes live in `data/indexes/` and include:
 - `opening-by-fen.json`
 - `opening-by-eco.json`
 - `opening-by-name.json`
+- `game-to-chunk.json` - idx → chunkId mapping for correct chunk lookup in serverless functions
 - `event-index.json`
 - `date-index.json`
 - `deduplication-index.json`
@@ -187,3 +188,4 @@ npm run type-check
 6. Running backup/upload locally without `NETLIFY_AUTH_TOKEN` + `SITE_ID`
 7. Treating direct scripts as default operator path instead of the workflow UI
 8. Forgetting backup before production upload
+9. Using `Math.floor(idx / 4000)` to locate a game's chunk — after `rechunkByHash` sorted chunks by hash, this formula returns wrong results. The serverless function `queryMasterGamesByFen.js` must use `game-to-chunk.json` via `getChunkIdForGame()`. Regenerate and upload `game-to-chunk.json` whenever chunks change.
