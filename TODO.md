@@ -8,7 +8,7 @@
 
 ## Technical Debt & Future Migrations
 
-### 🔴 HIGH PRIORITY - Migrate fromToPositionIndexed.json generation to eco.json.tooling
+### ✅ DONE - Migrate fromToPositionIndexed.json generation to eco.json.tooling
 
 **Current State:**  
 `scripts/generateFromToIndex.ts` downloads fromTo.json from eco.json GitHub and transforms it to fromToPositionIndexed.json for fensterchess consumption.
@@ -28,10 +28,14 @@
 5. Remove generation script from fensterchess.tooling
 6. Update fensterchess serverless functions to remove local file fallback
 
-**Blocked by:**
+**Completed:**
 
-- eco.json.tooling repository doesn't exist yet
-- Need to establish eco.json data maintenance workflow
+- eco.json.tooling repository created and cloned locally
+- `fromToPositionIndexed.js` already existed in eco.json.tooling (using hayatbiralem source)
+- Added `generate:fromto` npm script to eco.json.tooling
+- Removed `generate:fromto` script and `generateFromToIndex.ts` from fensterchess.tooling
+- Removed `data/fromToPositionIndexed.json` from fensterchess bundle
+- Removed local file fallback from `getFromTosForFen.js`
 
 **Impact if not done:**
 

@@ -8,35 +8,53 @@ interface ChunkData {
 }
 
 /**
- * Test 1: Verify chunk ID formula
+ * Test 1: Verify game-to-chunk.json index exists and is consistent
+ *
+ * NOTE: Math.floor(idx / 4000) is WRONG for chunk lookup after rechunkByHash
+ * reshuffled chunks by hash. Always use game-to-chunk.json as the source of truth.
  */
-function testChunkIdFormula() {
-  console.log("\n📝 Test 1: Chunk ID Formula");
-  console.log("Formula: chunkId = Math.floor(gameId / 4000)\n");
+function testGameToChunkIndex() {
+  console.log("\n📝 Test 1: game-to-chunk.json Index");
+  console.log(
+    "  (Math.floor(idx/4000) is incorrect post-rechunk - use game-to-chunk.json)\n",
+  );
 
-  const testCases = [
-    { gameId: 0, expectedChunk: 0 },
-    { gameId: 3999, expectedChunk: 0 },
-    { gameId: 4000, expectedChunk: 1 },
-    { gameId: 7999, expectedChunk: 1 },
-    { gameId: 8000, expectedChunk: 2 },
-    { gameId: 19000, expectedChunk: 4 },
-    { gameId: 19999, expectedChunk: 4 },
-    { gameId: 20000, expectedChunk: 5 },
-  ];
+  const indexesDir = "./data/indexes";
+  const gameToChunkPath = path.join(indexesDir, "game-to-chunk.json");
 
-  let passed = 0;
-  for (const { gameId, expectedChunk } of testCases) {
-    const actualChunk = Math.floor(gameId / 4000);
-    const status = actualChunk === expectedChunk ? "✅" : "❌";
+  if (!fs.existsSync(gameToChunkPath)) {
     console.log(
-      `  ${status} gameId ${gameId} → chunk-${actualChunk} (expected: ${expectedChunk})`,
+      "  ⚠️  game-to-chunk.json not found - skipping (expected before first build)",
     );
-    if (actualChunk === expectedChunk) passed++;
+    return true;
   }
 
-  console.log(`\n  Result: ${passed}/${testCases.length} passed`);
-  return passed === testCases.length;
+  const gameToChunk: Record<string, string> = JSON.parse(
+    fs.readFileSync(gameToChunkPath, "utf-8"),
+  );
+  const entryCount = Object.keys(gameToChunk).length;
+  console.log(
+    `  ✅ game-to-chunk.json loaded: ${entryCount.toLocaleString()} entries`,
+  );
+
+  // Verify all referenced chunk files actually exist
+  const referencedChunks = new Set(Object.values(gameToChunk));
+  let missingChunks = 0;
+  for (const chunkId of referencedChunks) {
+    const chunkPath = path.join(indexesDir, `chunk-${chunkId}.json`);
+    if (!fs.existsSync(chunkPath)) {
+      console.log(`  ❌ Referenced chunk-${chunkId}.json does not exist`);
+      missingChunks++;
+    }
+  }
+
+  if (missingChunks === 0) {
+    console.log(
+      `  ✅ All ${referencedChunks.size} referenced chunk files exist`,
+    );
+  }
+
+  return missingChunks === 0;
 }
 
 /**
@@ -64,9 +82,24 @@ function testExistingChunks() {
 
   console.log(`  Found ${chunkFiles.length} chunk files\n`);
 
+  // Load game-to-chunk index for cross-reference
+  const gameToChunkPath = path.join(indexesDir, "game-to-chunk.json");
+  const gameToChunk: Record<string, string> | null = fs.existsSync(
+    gameToChunkPath,
+  )
+    ? JSON.parse(fs.readFileSync(gameToChunkPath, "utf-8"))
+    : null;
+
+  if (!gameToChunk) {
+    console.log(
+      "  ⚠️  game-to-chunk.json not found - skipping membership cross-check",
+    );
+  }
+
   let allValid = true;
   let totalGames = 0;
   let maxGameId = -1;
+  let membershipErrors = 0;
 
   for (const chunkFile of chunkFiles) {
     const chunkId = parseInt(chunkFile.match(/chunk-(\d+)/)?.[1] || "0");
@@ -77,15 +110,30 @@ function testExistingChunks() {
     const minId = chunk.games[0]?.idx ?? -1;
     const maxId = chunk.games[gameCount - 1]?.idx ?? -1;
 
-    // Verify all game IDs in this chunk match the chunk ID
-    const expectedChunkId = chunkId;
-    for (const game of chunk.games) {
-      const calculatedChunk = Math.floor(game.idx / 4000);
-      if (calculatedChunk !== expectedChunkId) {
-        console.log(
-          `  ❌ chunk-${chunkId}: Game ${game.idx} should be in chunk-${calculatedChunk}`,
-        );
-        allValid = false;
+    // Verify chunk membership against game-to-chunk.json (not Math.floor formula)
+    if (gameToChunk) {
+      for (const game of chunk.games) {
+        const expectedChunkId = gameToChunk[String(game.idx)];
+        if (expectedChunkId === undefined) {
+          if (membershipErrors < 5) {
+            console.log(
+              `  ❌ chunk-${chunkId}: Game ${game.idx} not found in game-to-chunk.json`,
+            );
+          }
+          membershipErrors++;
+          allValid = false;
+        } else if (String(expectedChunkId) !== String(chunkId)) {
+          if (membershipErrors < 5) {
+            console.log(
+              `  ❌ chunk-${chunkId}: Game ${game.idx} indexed to chunk-${expectedChunkId} in game-to-chunk.json`,
+            );
+          }
+          membershipErrors++;
+          allValid = false;
+        }
+      }
+      if (membershipErrors > 5) {
+        console.log(`  ... and ${membershipErrors - 5} more membership errors`);
       }
     }
 
@@ -225,7 +273,7 @@ async function runTests() {
   console.log("=".repeat(60));
 
   const results = [
-    testChunkIdFormula(),
+    testGameToChunkIndex(),
     testExistingChunks(),
     testChunkAppend(),
     testDeduplicationIndex(),

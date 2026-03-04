@@ -1,6 +1,6 @@
 {
   "name": "fensterchess.tooling",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Data maintenance tooling for fensterchess master games database",
   "type": "module",
   "scripts": {
@@ -8,7 +8,6 @@
     "download:pgnmentor": "tsx scripts/downloadPgnmentor.ts",
     "build-indexes": "tsx scripts/buildIndexes.ts",
     "rechunk": "tsx scripts/rechunkByHash.ts",
-    "generate:fromto": "tsx scripts/generateFromToIndex.ts",
     "backup": "tsx --env-file=.env scripts/backupFromBlobs.ts",
     "upload": "node --env-file=.env scripts/uploadToBlobs.js",
     "workflow": "node scripts/workflowServer.js",
