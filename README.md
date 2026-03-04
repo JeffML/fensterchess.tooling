@@ -58,6 +58,48 @@ The page orchestrates a strict, ordered workflow with live output:
   - Runs `uploadToBlobs.js`
   - Shows diff/summary and uploads changed files after confirmation handling
 
+## Data Pipeline
+
+```mermaid
+flowchart TD
+    subgraph Sources["Data Sources"]
+        PGN["pgnmentor.com\nPGN files"]
+        ECO["eco.json GitHub\nopening data"]
+    end
+
+    subgraph Tooling["fensterchess.tooling (local)"]
+        DL["downloadPgnmentor.ts\ndownload + parse + chunk"]
+        CHUNKS["data/indexes/\nchunk-*.json"]
+        BI["buildIndexes.ts\nenrich + index"]
+        IDX["data/indexes/\nquery indexes"]
+        BK["backupFromBlobs.ts\nbackup production"]
+        UP["uploadToBlobs.js\ndiff + upload"]
+        BACKUP["backups/\ntimestamped snapshots"]
+    end
+
+    subgraph Blobs["Netlify Blobs (production)"]
+        BLOBCHUNKS["chunks + indexes"]
+    end
+
+    subgraph App["fensterchess (runtime)"]
+        FN["Serverless Functions"]
+        UI["React UI"]
+    end
+
+    PGN --> DL
+    DL --> CHUNKS
+    ECO --> BI
+    CHUNKS --> BI
+    BI --> IDX
+    BLOBCHUNKS --> BK
+    BK --> BACKUP
+    IDX --> UP
+    CHUNKS --> UP
+    UP --> BLOBCHUNKS
+    BLOBCHUNKS --> FN
+    FN --> UI
+```
+
 ### Tracking Semantics
 
 The workflow uses two tracking states:
