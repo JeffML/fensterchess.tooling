@@ -17,11 +17,15 @@ import type {
   OpeningByNameIndex,
   OpeningByEcoIndex,
   PlayerIndex,
+  PlayerEcoMatrix,
+  PlayerEcoEntry,
   EventIndex,
   DateIndex,
   DeduplicationIndex,
   SourceTracking,
 } from "./types.js";
+import { createRequire } from "module";
+const _require = createRequire(import.meta.url);
 
 // Netlify Blobs limit: 5 MB per blob
 // ~1 KB per game → 4000 games = ~4 MB (with headroom for metadata)
@@ -313,6 +317,109 @@ function buildPlayerIndex(games: GameMetadata[]): PlayerIndex {
   return index;
 }
 
+const ECO_LETTERS = ["A", "B", "C", "D", "E"] as const;
+const MIN_PLAYER_GAMES = 100;
+
+function buildPlayerEcoMatrix(games: GameMetadata[]): PlayerEcoMatrix {
+  console.log("\n🎵 Building Player ECO matrix...");
+
+  // Load master-ratings lookup (optional — missing entry is fine)
+  let ratingsTable: Record<
+    string,
+    { peak: number; source: string; displayName: string }
+  > = {};
+  try {
+    const ratingsPath = path.join(
+      path.dirname(_require.resolve("./types.js")),
+      "master-ratings.json",
+    );
+    ratingsTable = JSON.parse(fs.readFileSync(ratingsPath, "utf-8"));
+  } catch {
+    // Fallback: try relative to cwd
+    try {
+      ratingsTable = JSON.parse(
+        fs.readFileSync("./scripts/master-ratings.json", "utf-8"),
+      );
+    } catch {
+      console.warn(
+        "  ⚠️  master-ratings.json not found — peak ratings will be omitted",
+      );
+    }
+  }
+
+  // First pass: accumulate raw counts per player per ECO letter/decade
+  const raw: Record<
+    string,
+    { decades: Record<string, number[]>; total: number }
+  > = {};
+
+  for (const game of games) {
+    if (!game.ecoJsonEco) continue;
+    const ecoCode = game.ecoJsonEco.toUpperCase(); // e.g. "B90"
+    const letter = ecoCode[0]; // "B"
+    if (!ECO_LETTERS.includes(letter as (typeof ECO_LETTERS)[number])) continue;
+    const decade = parseInt(ecoCode[1] ?? "0", 10); // 9
+
+    const processPlayer = (name: string | undefined) => {
+      if (!name) return;
+      const key = name.toLowerCase().trim();
+      if (!raw[key]) raw[key] = { decades: {}, total: 0 };
+      if (!raw[key].decades[letter])
+        raw[key].decades[letter] = new Array(10).fill(0);
+      raw[key].decades[letter][decade]++;
+      raw[key].total++;
+    };
+
+    processPlayer(game.white);
+    processPlayer(game.black);
+  }
+
+  // Second pass: filter by min games and shape the output
+  const players: PlayerEcoMatrix["players"] = {};
+  let included = 0;
+
+  for (const [key, data] of Object.entries(raw)) {
+    if (data.total < MIN_PLAYER_GAMES) continue;
+
+    const ratingEntry = ratingsTable[key];
+    // Build a display name: prefer ratings table, else title-case the raw key
+    const displayName =
+      ratingEntry?.displayName ??
+      key.replace(/(^|,\s*)(\w)/g, (_, sep, c) => sep + c.toUpperCase()).trim();
+
+    const eco: PlayerEcoEntry["eco"] = {};
+    for (const letter of ECO_LETTERS) {
+      const decades = data.decades[letter] ?? new Array(10).fill(0);
+      eco[letter] = { total: decades.reduce((s, v) => s + v, 0), decades };
+    }
+
+    const entry: PlayerEcoEntry = {
+      displayName,
+      totalGames: data.total,
+      ...(ratingEntry
+        ? { peakRating: ratingEntry.peak, ratingSource: ratingEntry.source }
+        : {}),
+      eco,
+    };
+
+    players[key] = entry;
+    included++;
+  }
+
+  console.log(
+    `  ✅ ${included} players included (>= ${MIN_PLAYER_GAMES} games); ${
+      Object.keys(raw).length - included
+    } filtered out`,
+  );
+
+  return {
+    totalPlayers: included,
+    minGames: MIN_PLAYER_GAMES,
+    builtAt: new Date().toISOString(),
+    players,
+  };
+}
+
 function buildEventIndex(games: GameMetadata[]): EventIndex {
   console.log("\n🏆 Building Event index...");
 
@@ -511,6 +618,7 @@ async function buildIndexes(): Promise<void> {
   const openingByName = buildOpeningByNameIndex(allGames);
   const openingByEco = buildOpeningByEcoIndex(allGames);
   const playerIndex = buildPlayerIndex(allGames);
+  const playerEcoMatrix = buildPlayerEcoMatrix(allGames);
   const eventIndex = buildEventIndex(allGames);
   const dateIndex = buildDateIndex(allGames);
   const gameToPlayers = buildGameToPlayersIndex(allGames);
@@ -523,6 +631,7 @@ async function buildIndexes(): Promise<void> {
     { name: "opening-by-name.json", data: openingByName },
     { name: "opening-by-eco.json", data: openingByEco },
     { name: "player-index.json", data: playerIndex },
+    { name: "player-eco-matrix.json", data: playerEcoMatrix },
     { name: "event-index.json", data: eventIndex },
     { name: "date-index.json", data: dateIndex },
     { name: "game-to-players.json", data: gameToPlayers },

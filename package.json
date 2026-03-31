@@ -1,6 +1,6 @@
 {
   "name": "fensterchess.tooling",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Data maintenance tooling for fensterchess master games database",
   "type": "module",
   "scripts": {
@@ -16,6 +16,7 @@
     "test:chunks": "tsx test/testChunkLogic.ts",
     "test:pipeline": "tsx test/testPipeline.ts",
     "test:reentrancy": "node test/testReentrancy.js",
+    "test:hash": "tsx test/testHashGame.js",
     "test:batch": "vitest run test/batchMetadata.test.ts",
     "type-check": "tsc --noEmit"
   },

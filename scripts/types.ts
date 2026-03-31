@@ -135,6 +135,52 @@ export interface PlayerIndex {
 }
 
 /**
+ * Player ECO matrix — used for the chord diagram visualization.
+ * Maps lowercase player names to their game counts by ECO letter and decade band.
+ * Only includes players with >= MIN_PLAYER_GAMES total games.
+ * Rebuilt automatically on every buildIndexes run.
+ */
+export interface PlayerEcoDecade {
+  /** Total games in this decade band (e.g. B9x) */
+  total: number;
+}
+
+export interface PlayerEcoLetter {
+  /** Total games in this ECO letter */
+  total: number;
+  /** Counts per decade index 0–9 (E0x, E1x, … E9x) */
+  decades: number[];
+}
+
+export interface PlayerEcoEntry {
+  /** Display name (title-cased, from master-ratings.json if present) */
+  displayName: string;
+  /** Total games across all ECO categories */
+  totalGames: number;
+  /** Peak rating (from master-ratings.json). Undefined if player not in table. */
+  peakRating?: number;
+  /** Rating source: 'fide' | 'chessmetrics' */
+  ratingSource?: string;
+  /** Game counts keyed by ECO letter A–E */
+  eco: {
+    [letter: string]: PlayerEcoLetter;
+  };
+}
+
+export interface PlayerEcoMatrix {
+  /** Total number of players included (>= minGames threshold) */
+  totalPlayers: number;
+  /** Minimum game count threshold used when building */
+  minGames: number;
+  /** ISO timestamp of last build */
+  builtAt: string;
+  /** Player entries, keyed by lowercase player name */
+  players: {
+    [playerName: string]: PlayerEcoEntry;
+  };
+}
+
+/**
  * Event/tournament index
  * Maps event names to game indices
  */

@@ -1,0 +1,94 @@
+{
+  "_comment": "Peak ratings for known masters in the game database. Keys match lowercased player names as stored in player-index.json. Sources: FIDE historical records for post-1970 players; Chessmetrics (J. Sonas) estimates for pre-ELO players. Add new entries here when new masters are added to the database.",
+  "_sources": {
+    "fide": "https://www.fide.com/ratings",
+    "chessmetrics": "http://www.chessmetrics.com (Jeff Sonas)"
+  },
+
+  "carlsen, m.": { "peak": 2882, "source": "fide", "displayName": "Carlsen" },
+  "kasparov, g.": { "peak": 2851, "source": "fide", "displayName": "Kasparov" },
+  "karpov, an.": { "peak": 2780, "source": "fide", "displayName": "Karpov" },
+  "anand, v.": { "peak": 2817, "source": "fide", "displayName": "Anand" },
+  "kramnik, v.": { "peak": 2817, "source": "fide", "displayName": "Kramnik" },
+  "nakamura, hi.": {
+    "peak": 2816,
+    "source": "fide",
+    "displayName": "Nakamura"
+  },
+  "aronian, l.": { "peak": 2830, "source": "fide", "displayName": "Aronian" },
+  "topalov, v.": { "peak": 2813, "source": "fide", "displayName": "Topalov" },
+  "giri, a.": { "peak": 2798, "source": "fide", "displayName": "Giri" },
+  "so, w.": { "peak": 2822, "source": "fide", "displayName": "So" },
+  "ding, l.": { "peak": 2816, "source": "fide", "displayName": "Ding Liren" },
+  "nepomniachtchi, i.": {
+    "peak": 2795,
+    "source": "fide",
+    "displayName": "Nepomniachtchi"
+  },
+  "firouzja, a.": { "peak": 2804, "source": "fide", "displayName": "Firouzja" },
+  "mamedyarov, s.": {
+    "peak": 2814,
+    "source": "fide",
+    "displayName": "Mamedyarov"
+  },
+  "grischuk, a.": { "peak": 2810, "source": "fide", "displayName": "Grischuk" },
+  "ivanchuk, v.": { "peak": 2787, "source": "fide", "displayName": "Ivanchuk" },
+  "morozevich, a.": {
+    "peak": 2788,
+    "source": "fide",
+    "displayName": "Morozevich"
+  },
+  "leko, p.": { "peak": 2763, "source": "fide", "displayName": "Leko" },
+  "svidler, p.": { "peak": 2769, "source": "fide", "displayName": "Svidler" },
+  "polgar, j.": { "peak": 2735, "source": "fide", "displayName": "Polgar" },
+  "shirov, a.": { "peak": 2771, "source": "fide", "displayName": "Shirov" },
+  "adams, mi.": { "peak": 2755, "source": "fide", "displayName": "Adams" },
+  "short, n.": { "peak": 2698, "source": "fide", "displayName": "Short" },
+  "korchnoi, v.": { "peak": 2695, "source": "fide", "displayName": "Korchnoi" },
+  "tal, m.": { "peak": 2705, "source": "chessmetrics", "displayName": "Tal" },
+  "fischer, r.": {
+    "peak": 2785,
+    "source": "chessmetrics",
+    "displayName": "Fischer"
+  },
+  "spassky, b.": {
+    "peak": 2690,
+    "source": "chessmetrics",
+    "displayName": "Spassky"
+  },
+  "petrosian, t.": {
+    "peak": 2645,
+    "source": "chessmetrics",
+    "displayName": "Petrosian"
+  },
+  "smyslov, v.": {
+    "peak": 2620,
+    "source": "chessmetrics",
+    "displayName": "Smyslov"
+  },
+  "botvinnik, m.": {
+    "peak": 2630,
+    "source": "chessmetrics",
+    "displayName": "Botvinnik"
+  },
+  "bronstein, d.": {
+    "peak": 2590,
+    "source": "chessmetrics",
+    "displayName": "Bronstein"
+  },
+  "nimzowitsch, a.": {
+    "peak": 2640,
+    "source": "chessmetrics",
+    "displayName": "Nimzowitsch"
+  },
+  "capablanca, j.": {
+    "peak": 2725,
+    "source": "chessmetrics",
+    "displayName": "Capablanca"
+  },
+  "alekhine, a.": {
+    "peak": 2740,
+    "source": "chessmetrics",
+    "displayName": "Alekhine"
+  }
+}
