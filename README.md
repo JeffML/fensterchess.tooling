@@ -100,6 +100,23 @@ flowchart TD
     FN --> UI
 ```
 
+### When eco.json Data Changes
+
+If the [eco.json](https://github.com/JeffML/eco.json) opening database is updated (new openings, changed names, FENs, or ECO codes), the master-game indexes need to be rebuilt to reflect the new data. Only one script is affected:
+
+**`buildIndexes.ts`** — consumes eco.json via the `@chess-openings/eco.json` npm package to enrich every master game with opening metadata (`ecoJsonFen`, `ecoJsonOpening`, `ecoJsonEco`, `movesBack`) and rebuild three query indexes (`opening-by-fen.json`, `opening-by-name.json`, `opening-by-eco.json`) plus `player-eco-matrix.json`.
+
+**Steps to refresh:**
+
+1. `npm run build-indexes` — re-enrich all games and rebuild indexes
+2. `npm run upload` — push updated indexes to Netlify Blobs
+
+(Or use the workflow UI: **Build Indexes** → **Upload**.)
+
+Scripts that do **not** need to run: `downloadPgnmentor.ts`, `backupFromBlobs.ts`, `rechunkByHash.ts`.
+
+> **Note:** If `fromTo.json` was also modified, `fromToPositionIndexed.json` must be regenerated in **eco.json.tooling** (`npm run generate:fromto`). Fensterchess downloads that file directly from the eco.json GitHub repo — no fensterchess.tooling action needed.
+
 ### Tracking Semantics
 
 The workflow uses two tracking states:
