@@ -1,5 +1,11 @@
 # fromToPositionIndexed.json Generation - Implementation Notes
 
+> **STATUS: SUPERSEDED — historical record only.** The temporary tooling described
+> below has been fully migrated to `eco.json.tooling`. `scripts/generateFromToIndex.ts`
+> no longer exists in this repo, `data/indexes/fromToPositionIndexed.json` is not
+> generated here, and fensterchess downloads the file directly from the `eco.json`
+> GitHub repo. See `eco.json.tooling/fromToPositionIndexed.js`.
+
 ## Problem Statement
 
 fensterchess dev mode was failing with "failure to load" errors. Root cause: `fromToPositionIndexed.json` doesn't exist on eco.json GitHub (404 error).

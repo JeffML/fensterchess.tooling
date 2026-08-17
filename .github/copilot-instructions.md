@@ -176,7 +176,7 @@ npm run type-check
 
 ## Current Temporary/Technical Debt
 
-`scripts/generateFromToIndex.ts` is temporary and should migrate to eco.json.tooling when that repo/process is available.
+None outstanding. The temporary `scripts/generateFromToIndex.ts` was removed after `fromToPositionIndexed.json` generation migrated to `eco.json.tooling`; that repo now owns regeneration, and fensterchess downloads the file from the `eco.json` GitHub repo.
 
 ## Common Pitfalls
 
